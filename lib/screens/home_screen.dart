@@ -35,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _hasSearched = false;
   List<DirectoryContact> _results = [];
   int _localMatchCount = 0;
+  int _sponsoredCount = 0;
   List<MyContactItem> _localContacts = [];
   List<DirectoryContact> _favs = [];
   String _scopeLabel = 'Location(Current Location)';
@@ -293,14 +294,57 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      final sponsoredMatches = <DirectoryContact>[];
+      final normalApiMatches = <DirectoryContact>[];
+
+      for (final item in apiResults) {
+        final bal = double.tryParse(item.priorityBalance) ?? 0.0;
+        final isPromoted = item.priority == '0' && bal > 0;
+        if (isPromoted) {
+          sponsoredMatches.add(item);
+        } else {
+          normalApiMatches.add(item);
+        }
+      }
+
+      final combined = [...localMatches, ...sponsoredMatches, ...normalApiMatches];
+
       setState(() {
-        _results = [...localMatches, ...apiResults];
+        _results = combined;
         _localMatchCount = localMatches.length;
+        _sponsoredCount = sponsoredMatches.length;
       });
+
+      if (sponsoredMatches.isNotEmpty) {
+        _processSponsoredDeductions(sponsoredMatches);
+      }
     } catch (e) {
       debugPrint("Search error: $e");
     } finally {
       setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _processSponsoredDeductions(List<DirectoryContact> sponsoredList) async {
+    const double impressionCost = 0.30;
+    for (final item in sponsoredList) {
+      final currentBal = double.tryParse(item.priorityBalance) ?? 0.0;
+      if (currentBal <= 0) continue;
+
+      final newBal = (currentBal - impressionCost).clamp(0.0, double.infinity);
+      final newBalStr = newBal.toStringAsFixed(2);
+      final isStillPromoted = newBal > 0 && item.priority == '0';
+
+      try {
+        await widget.api.post('savepriority', {
+          'owner': item.email ?? '',
+          'phone': item.phone,
+          'priority_amount': newBalStr,
+          'priority': isStillPromoted ? '0' : '1',
+        });
+      } catch (e) {
+        debugPrint('Error deducting impression cost: $e');
+      }
     }
   }
 
@@ -896,11 +940,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   final contact = _results[i];
                   final isFav = _favs.any((e) => e.phone == contact.phone);
                   final isMyContact = i < _localMatchCount || contact.category == 'my_contact';
+                  final isSponsored = !isMyContact && 
+                                      i >= _localMatchCount && 
+                                      i < (_localMatchCount + _sponsoredCount);
 
                   return ContactCard(
                     contact: contact,
                     isFavourite: isFav,
                     isMyContact: isMyContact,
+                    isSponsored: isSponsored,
                     isFirstThree: i < 3,
                     onCall: isMyContact ? null : () => widget.store.addToHistory(contact),
                     onTap: isMyContact ? () {} : () {

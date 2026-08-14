@@ -89,12 +89,20 @@ class _PromoteScreenState extends State<PromoteScreen> {
   }
 
   Future<void> _updatePriority(bool value) async {
-    if (value && (double.tryParse(_balance) ?? 0) < 0.30) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You don't have enough amount to promote your contact")));
+    final currentBal = double.tryParse(_balance) ?? 0.0;
+    if (value && currentBal <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Promotion Balance is ₹0.00. Please add balance to enable promotion.")),
+      );
       setState(() => _isPromoting = false);
+      showDialog(
+        context: context,
+        builder: (c) => const PaymentDialog(),
+      );
       return;
     }
     setState(() => _isPromoting = value);
+    final messenger = ScaffoldMessenger.of(context);
     await _api.post('savepriority', {
       'owner': widget.session.phone ?? '', 
       'phone': widget.contact.phone,
@@ -102,7 +110,13 @@ class _PromoteScreenState extends State<PromoteScreen> {
       'priority': value ? '0' : '1',
     });
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated successfully'), backgroundColor: Colors.green, duration: Duration(seconds: 1)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(value ? 'Promotion Enabled! Profile is now Sponsored.' : 'Promotion Disabled.'),
+          backgroundColor: value ? Colors.green : Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -218,7 +232,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
                               const SizedBox(width: 8),
                               const Text('Balance for Promotion', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'Poppins')),
                               const Spacer(),
-                              Text('\$ ${_formatBalance(_balance)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Poppins')),
+                              Text('₹ ${_formatBalance(_balance)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Poppins')),
                             ],
                           ),
                           const SizedBox(height: 10),
@@ -227,8 +241,8 @@ class _PromoteScreenState extends State<PromoteScreen> {
                             child: InkWell(
                               onTap: () {
                                 showDialog(
-                                  context: context, 
-                                  builder: (c) => const PaymentDialog()
+                                  context: context,
+                                  builder: (c) => const PaymentDialog(),
                                 );
                               },
                               child: Container(
