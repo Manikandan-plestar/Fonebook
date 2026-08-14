@@ -48,8 +48,7 @@ class ContactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSponsoredCard = isSponsored || 
-        (!isMyContact && contact.priority == '0' && (double.tryParse(contact.priorityBalance) ?? 0) > 0);
+    final isSponsoredCard = isSponsored || contact.priority == '0';
     
     final timeAgo = showTime ? _getTimeAgo(contact.timestamp) : "";
     final subtitle = showTime && timeAgo.isNotEmpty ? "${contact.service} • $timeAgo" : contact.service;
@@ -82,9 +81,22 @@ class ContactCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Profile Avatar / Image
-            Stack(
-              clipBehavior: Clip.none,
+            Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                if (isSponsoredCard)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      'Sponsored',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF4A4A4A),
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ),
                 Container(
                   width: 48,
                   height: 48,
@@ -103,22 +115,6 @@ class ContactCard extends StatelessWidget {
                         : Image.asset('assets/images/user.png', fit: BoxFit.cover),
                   ),
                 ),
-                if (isSponsoredCard)
-                  Positioned(
-                    top: -4,
-                    left: -4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD7B41A),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'Ad',
-                        style: TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                      ),
-                    ),
-                  ),
               ],
             ),
             const SizedBox(width: 12),
@@ -146,34 +142,6 @@ class ContactCard extends StatelessWidget {
                         ),
                     ],
                   ),
-
-                  if (isSponsoredCard && !isMyContact) ...[
-                    const SizedBox(height: 3),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF1C1),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFFFFD54F), width: 0.8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.campaign, size: 11, color: Color(0xFF8C6D00)),
-                          SizedBox(width: 3),
-                          Text(
-                            'Sponsored',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF8C6D00),
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
 
                   if (isMyContact) ...[
                     const SizedBox(height: 4),

@@ -33,6 +33,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
   String? _countryCode;
   String? _stateCode;
   
+  final Set<String> _processedPurchaseIDs = {};
   late StreamSubscription<PurchaseDetails> _purchaseSub;
 
   @override
@@ -40,13 +41,42 @@ class _PromoteScreenState extends State<PromoteScreen> {
     super.initState();
     _loadStatus();
     
-    _purchaseSub = PaymentService().purchaseStream.listen((purchase) {
+    _purchaseSub = PaymentService().purchaseStream.listen((purchase) async {
       if (purchase.status == PurchaseStatus.purchased) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment Successful! Updating balance...')));
-        // Refresh balance after a short delay to allow backend to process
-        Future.delayed(const Duration(seconds: 3), () => _loadStatus());
+        final txId = purchase.purchaseID ?? '${purchase.productID}_${DateTime.now().millisecondsSinceEpoch}';
+        if (_processedPurchaseIDs.contains(txId)) return;
+        _processedPurchaseIDs.add(txId);
+
+        double creditAmount = 100.0;
+        if (purchase.productID == 'promote_2') creditAmount = 250.0;
+        if (purchase.productID == 'promote_3') creditAmount = 500.0;
+        if (purchase.productID == 'promote_4') creditAmount = 1000.0;
+
+        final currentBal = double.tryParse(_balance) ?? 0.0;
+        final newBal = currentBal + creditAmount;
+        final newBalStr = newBal.toStringAsFixed(2);
+
+        await _api.post('savepriority', {
+          'phone': widget.contact.phone,
+          'priority_amount': newBalStr,
+          'priority': '0',
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Payment Successful! Added ₹${creditAmount.toStringAsFixed(2)} to ${widget.contact.name}\'s Promotion Balance.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadStatus();
+        }
       } else if (purchase.status == PurchaseStatus.error) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment Failed: ${purchase.error?.message ?? 'Unknown error'}')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Payment Failed: ${purchase.error?.message ?? 'Unknown error'}')),
+          );
+        }
       }
     });
   }
@@ -59,29 +89,24 @@ class _PromoteScreenState extends State<PromoteScreen> {
 
   Future<void> _loadStatus() async {
     try {
-      String balPhone = widget.session.phone ?? widget.contact.phone;
-      final balRes = await _api.get('check-priority', {'phone': balPhone});
+      // ALWAYS identify balance strictly by widget.contact.phone (unique profile identifier)
+      final balRes = await _api.get('check-priority', {'phone': widget.contact.phone});
       
       String foundBal = '0.00';
       if (balRes is List && balRes.isNotEmpty) {
         foundBal = balRes[0]['priority_balance']?.toString() ?? '0.00';
-      }
-
-      setState(() {
-        _balance = foundBal;
-      });
-
-      final statusRes = await _api.get('check-priority', {'phone': widget.contact.phone});
-      if (statusRes is List && statusRes.isNotEmpty) {
-        final data = statusRes[0];
-        setState(() {
-          _isPromoting = data['priority'] == '0'; 
-          _isInternational = data['promote_international'] == 'yes';
-          _searchType = data['search_type'] ?? 'broad';
-          _selectedCountry = data['promote_country'] ?? 'All';
-          _selectedState = data['promote_state'] ?? 'All';
-          _selectedCity = data['promote_city'] ?? 'All';
-        });
+        final data = balRes[0];
+        if (mounted) {
+          setState(() {
+            _balance = foundBal;
+            _isPromoting = data['priority'] == '0'; 
+            _isInternational = data['promote_international'] == 'yes';
+            _searchType = data['search_type'] ?? 'broad';
+            _selectedCountry = data['promote_country'] ?? 'All';
+            _selectedState = data['promote_state'] ?? 'All';
+            _selectedCity = data['promote_city'] ?? 'All';
+          });
+        }
       }
     } catch (e) {
       debugPrint("Load status error: $e");
@@ -104,7 +129,6 @@ class _PromoteScreenState extends State<PromoteScreen> {
     setState(() => _isPromoting = value);
     final messenger = ScaffoldMessenger.of(context);
     await _api.post('savepriority', {
-      'owner': widget.session.phone ?? '', 
       'phone': widget.contact.phone,
       'priority_amount': _balance,
       'priority': value ? '0' : '1',

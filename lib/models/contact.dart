@@ -93,7 +93,7 @@ class DirectoryContact {
       keyword: p('keywords') == '' ? p('keyword') : p('keywords'),
       tags: p('tags'),
       verified: int.tryParse(p('verification')) ?? 0,
-      priorityBalance: p('priority_balance') == '' ? '0' : p('priority_balance'),
+      priorityBalance: p('priority_balance') == '' ? (p('priority_amount') == '' ? '0' : p('priority_amount')) : p('priority_balance'),
       priority: p('priority') == '' ? '1' : p('priority'),
       email: p('email'),
       whatsapp: p('wpno'),

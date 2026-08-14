@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<DirectoryContact> _results = [];
   int _localMatchCount = 0;
   int _sponsoredCount = 0;
+  final Set<String> _deductedPhonesThisSession = {};
   List<MyContactItem> _localContacts = [];
   List<DirectoryContact> _favs = [];
   String _scopeLabel = 'Location(Current Location)';
@@ -298,8 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final normalApiMatches = <DirectoryContact>[];
 
       for (final item in apiResults) {
-        final bal = double.tryParse(item.priorityBalance) ?? 0.0;
-        final isPromoted = item.priority == '0' && bal > 0;
+        final isPromoted = item.priority == '0';
         if (isPromoted) {
           sponsoredMatches.add(item);
         } else {
@@ -316,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       if (sponsoredMatches.isNotEmpty) {
-        _processSponsoredDeductions(sponsoredMatches);
+        _processSponsoredDeductions(sponsoredMatches, query);
       }
     } catch (e) {
       debugPrint("Search error: $e");
@@ -325,9 +325,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _processSponsoredDeductions(List<DirectoryContact> sponsoredList) async {
-    const double impressionCost = 0.30;
+  Future<void> _processSponsoredDeductions(List<DirectoryContact> sponsoredList, String query) async {
+    const double impressionCost = 1.0; // ₹1.00 per search display
+    final String loggedInPhone = widget.session.phone ?? '';
+    final String loggedInEmail = widget.session.email ?? '';
+
     for (final item in sponsoredList) {
+      // Skip deduction if the logged-in user (profile owner) searches their own profile!
+      if ((loggedInPhone.isNotEmpty && item.phone == loggedInPhone) ||
+          (loggedInEmail.isNotEmpty && item.email == loggedInEmail)) {
+        debugPrint("Skipping impression deduction for profile owner: ${item.phone}");
+        continue;
+      }
+
+      final String dedKey = "${query}_${item.phone}";
+      if (_deductedPhonesThisSession.contains(dedKey)) {
+        continue; // Skip duplicate deduction for same query and profile
+      }
+      _deductedPhonesThisSession.add(dedKey);
+
       final currentBal = double.tryParse(item.priorityBalance) ?? 0.0;
       if (currentBal <= 0) continue;
 
@@ -337,13 +353,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
       try {
         await widget.api.post('savepriority', {
-          'owner': item.email ?? '',
           'phone': item.phone,
           'priority_amount': newBalStr,
           'priority': isStillPromoted ? '0' : '1',
         });
       } catch (e) {
-        debugPrint('Error deducting impression cost: $e');
+        debugPrint('Error deducting impression cost for ${item.phone}: $e');
       }
     }
   }
@@ -939,7 +954,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (c, i) {
                   final contact = _results[i];
                   final isFav = _favs.any((e) => e.phone == contact.phone);
-                  final isMyContact = i < _localMatchCount || contact.category == 'my_contact';
+                  final isMyContact = i < _localMatchCount || 
+                                      contact.category == 'my_contact' ||
+                                      _localContacts.any((l) {
+                                        final lPhone = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+                                        final cPhone = contact.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+                                        return lPhone.isNotEmpty && cPhone.isNotEmpty && lPhone == cPhone;
+                                      });
                   final isSponsored = !isMyContact && 
                                       i >= _localMatchCount && 
                                       i < (_localMatchCount + _sponsoredCount);

@@ -74,6 +74,8 @@ class PaymentService {
     }
   }
 
+  final Set<String> _verifiedPurchaseIDs = {};
+
   Future<void> _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
     if (kIsWeb) return;
     for (var purchase in purchaseDetailsList) {
@@ -85,8 +87,14 @@ class PaymentService {
         if (purchase.status == PurchaseStatus.error) {
           debugPrint("Purchase Error Detail: ${purchase.error?.message} (${purchase.error?.code})");
         } else if (purchase.status == PurchaseStatus.purchased || purchase.status == PurchaseStatus.restored) {
+          final txKey = purchase.purchaseID ?? purchase.verificationData.serverVerificationData;
+          if (txKey.isNotEmpty && _verifiedPurchaseIDs.contains(txKey)) {
+            debugPrint("Skipping already processed purchase: $txKey");
+            continue;
+          }
           bool deliver = await _verifyPurchase(purchase);
           if (deliver) {
+            if (txKey.isNotEmpty) _verifiedPurchaseIDs.add(txKey);
             await _iap.completePurchase(purchase);
           }
         }
