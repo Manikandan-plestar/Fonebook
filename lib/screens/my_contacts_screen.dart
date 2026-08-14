@@ -107,16 +107,19 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         final seen = <String>{};
         final unique = <MyContactItem>[];
         
-        final codes = dialCodes.map((e) => e['dial_code']!).toList();
+        final sortedCodes = List<String>.from(dialCodes.map((e) => e['dial_code']!))
+          ..sort((a, b) => b.length.compareTo(a.length));
 
         for (final item in parsed) {
           final digits = item.phone.replaceAll(RegExp(r'[^0-9]'), '');
           final national = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
           String dialCode = '+91';
-          for (final dc in codes) {
-            if (item.phone.contains(dc)) {
-              dialCode = dc;
-              break;
+          if (item.phone.contains('+')) {
+            for (final dc in sortedCodes) {
+              if (item.phone.startsWith(dc) || item.phone.contains(dc)) {
+                dialCode = dc;
+                break;
+              }
             }
           }
           final key = '$dialCode-$national';
@@ -423,6 +426,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                   ? widget.session.email!
                                   : (widget.session.phone ?? 'guest@fonebook.com');
                               final fullPhone = '${selectedCountry['dial_code']} ${phoneCtrl.text.trim()}';
+                              final nav = Navigator.of(ctx);
+                              final messenger = ScaffoldMessenger.of(context);
                               await widget.api.post('save_my_contact', {
                                 'owner_email': email,
                                 'name': nameCtrl.text.trim(),
@@ -430,8 +435,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                 'phone': fullPhone,
                               });
                               if (mounted) {
-                                Navigator.pop(ctx);
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                nav.pop();
+                                messenger.showSnackBar(
                                   const SnackBar(content: Text('Contact added successfully'), backgroundColor: Colors.green),
                                 );
                                 _load();
@@ -650,6 +655,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                   ? widget.session.email!
                                   : (widget.session.phone ?? 'guest@fonebook.com');
                               final fullPhone = '${selectedCountry['dial_code']} ${phoneCtrl.text.trim()}';
+                              final nav = Navigator.of(ctx);
+                              final messenger = ScaffoldMessenger.of(context);
                               await widget.api.post('update_my_contact', {
                                 'id': item.id?.toString() ?? '',
                                 'owner_email': email,
@@ -658,8 +665,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                 'phone': fullPhone,
                               });
                               if (mounted) {
-                                Navigator.pop(ctx);
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                nav.pop();
+                                messenger.showSnackBar(
                                   const SnackBar(content: Text('Contact updated successfully'), backgroundColor: Colors.green),
                                 );
                                 _load();
@@ -728,14 +735,21 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
   }
 
   void _showDeviceContactsPicker(List<Contact> deviceContacts) {
-    List<Contact> filtered = List.from(deviceContacts);
+    final sortedCodes = List<String>.from(dialCodes.map((e) => e['dial_code']!))
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    final List<MapEntry<int, Contact>> indexedContacts = List.generate(
+      deviceContacts.length,
+      (i) => MapEntry(i, deviceContacts[i]),
+    );
+    List<MapEntry<int, Contact>> filtered = List.from(indexedContacts);
+
     final selectedIndices = <int>{};
     for (int i = 0; i < deviceContacts.length; i++) {
       selectedIndices.add(i);
     }
 
     final searchCtrl = TextEditingController();
-    bool importing = false;
 
     showModalBottomSheet(
       context: context,
@@ -750,9 +764,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
               final q = query.toLowerCase().trim();
               setModalState(() {
                 if (q.isEmpty) {
-                  filtered = List.from(deviceContacts);
+                  filtered = List.from(indexedContacts);
                 } else {
-                  filtered = deviceContacts.where((c) {
+                  filtered = indexedContacts.where((entry) {
+                    final c = entry.value;
                     final nameMatch = c.displayName.toLowerCase().contains(q);
                     final phoneMatch = c.phones.any((p) => p.number.contains(q));
                     return nameMatch || phoneMatch;
@@ -824,8 +839,9 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           : ListView.builder(
                               itemCount: filtered.length,
                               itemBuilder: (c, i) {
-                                final item = filtered[i];
-                                final originalIndex = deviceContacts.indexOf(item);
+                                final entry = filtered[i];
+                                final originalIndex = entry.key;
+                                final item = entry.value;
                                 final isSelected = selectedIndices.contains(originalIndex);
                                 final phone = item.phones.isNotEmpty ? item.phones.first.number : 'No Phone';
                                 final job = item.organizations.isNotEmpty ? item.organizations.first.title : '';
@@ -857,93 +873,16 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           foregroundColor: Colors.black,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: (importing || selectedIndices.isEmpty)
+                        onPressed: selectedIndices.isEmpty
                             ? null
-                            : () async {
-                                setModalState(() => importing = true);
-                                try {
-                                  final toImport = selectedIndices.map((idx) {
-                                    final item = deviceContacts[idx];
-                                    final rawPhone = item.phones.isNotEmpty ? item.phones.first.number : '';
-                                    final title = item.organizations.isNotEmpty ? item.organizations.first.title : '';
-
-                                    String cleanP = rawPhone.replaceAll(RegExp(r'[\(\)\-\s\.]'), '').trim();
-                                    if (cleanP.isNotEmpty) {
-                                      if (!cleanP.startsWith('+')) {
-                                        if (cleanP.length > 10 && cleanP.startsWith('0')) {
-                                          cleanP = cleanP.substring(1);
-                                        }
-                                        cleanP = '+91 $cleanP';
-                                      } else {
-                                        String code = '+91';
-                                        String rest = cleanP.substring(1);
-                                        for (final country in dialCodes) {
-                                          final dc = country['dial_code']!;
-                                          if (cleanP.startsWith(dc)) {
-                                            code = dc;
-                                            rest = cleanP.substring(dc.length);
-                                            break;
-                                          }
-                                        }
-                                        cleanP = '$code $rest';
-                                      }
-                                    }
-
-                                    return {
-                                      'name': item.displayName,
-                                      'title': title,
-                                      'phone': cleanP,
-                                    };
-                                  }).where((c) => (c['phone'] ?? '').isNotEmpty).toList();
-
-                                  dynamic importRes;
-                                  if (toImport.isNotEmpty) {
-                                    final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
-                                        ? widget.session.email!
-                                        : (widget.session.phone ?? 'guest@fonebook.com');
-                                    importRes = await widget.api.post('import_my_contacts', {
-                                      'owner_email': email,
-                                      'contacts': jsonEncode(toImport),
-                                    });
-                                  }
-
-                                  if (mounted) {
-                                    Navigator.pop(ctx);
-                                    int inserted = 0;
-                                    int skipped = 0;
-                                    if (importRes is Map) {
-                                      inserted = importRes['inserted'] ?? 0;
-                                      skipped = importRes['skipped'] ?? 0;
-                                    } else {
-                                      inserted = toImport.length;
-                                    }
-
-                                    String msg = '';
-                                    if (inserted > 0 && skipped == 0) {
-                                      msg = '$inserted contact(s) imported successfully';
-                                    } else if (inserted > 0 && skipped > 0) {
-                                      msg = '$inserted contact(s) imported. $skipped number(s) are already in contacts.';
-                                    } else if (inserted == 0 && skipped > 0) {
-                                      msg = 'Number is already in contacts';
-                                    } else {
-                                      msg = 'Import completed';
-                                    }
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Profile updated successfully'), backgroundColor: Colors.green),
-                                    );
-                                    _load();
-                                  }
-                                } catch (e) {
-                                  setModalState(() => importing = false);
-                                }
+                            : () {
+                                Navigator.pop(ctx);
+                                _startBatchImport(deviceContacts, selectedIndices, sortedCodes);
                               },
-                        child: importing
-                            ? const CircularProgressIndicator(color: Colors.black)
-                            : Text(
-                                'Import ${selectedIndices.length} Contacts',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                              ),
+                        child: Text(
+                          'Import ${selectedIndices.length} Contacts',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                        ),
                       ),
                     ),
                   ],
@@ -956,7 +895,209 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     );
   }
 
+  Future<void> _startBatchImport(
+    List<Contact> deviceContacts,
+    Set<int> selectedIndices,
+    List<String> sortedCodes,
+  ) async {
+    final existingNationalDigits = _contacts.map((c) {
+      final d = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+      return d.length >= 10 ? d.substring(d.length - 10) : d;
+    }).where((d) => d.isNotEmpty).toSet();
+
+    final seenInImport = <String>{};
+    final toImport = <Map<String, String>>[];
+    int alreadyExistsCount = 0;
+
+    for (final idx in selectedIndices) {
+      final item = deviceContacts[idx];
+      final rawPhone = item.phones.isNotEmpty ? item.phones.first.number : '';
+      final title = item.organizations.isNotEmpty ? item.organizations.first.title : '';
+
+      String cleanP = rawPhone.replaceAll(RegExp(r'[\(\)\-\s\.]'), '').trim();
+      if (cleanP.isEmpty) continue;
+
+      if (!cleanP.startsWith('+')) {
+        if (cleanP.length > 10 && cleanP.startsWith('0')) {
+          cleanP = cleanP.substring(1);
+        }
+        cleanP = '+91 $cleanP';
+      } else {
+        String code = '+91';
+        String rest = cleanP.substring(1);
+        for (final dc in sortedCodes) {
+          if (cleanP.startsWith(dc)) {
+            code = dc;
+            rest = cleanP.substring(dc.length);
+            break;
+          }
+        }
+        cleanP = '$code $rest';
+      }
+
+      final digits = cleanP.replaceAll(RegExp(r'[^0-9]'), '');
+      final national = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
+
+      if (national.isNotEmpty) {
+        if (existingNationalDigits.contains(national) || seenInImport.contains(national)) {
+          alreadyExistsCount++;
+          continue;
+        }
+        seenInImport.add(national);
+      }
+
+      toImport.add({
+        'name': item.displayName,
+        'title': title,
+        'phone': cleanP,
+      });
+    }
+
+    if (toImport.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('All selected contacts ($alreadyExistsCount) are already in your contacts list.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    final int totalToImport = toImport.length;
+    final processedNotifier = ValueNotifier<int>(0);
+    final insertedNotifier = ValueNotifier<int>(0);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (progressCtx) {
+        return AnimatedBuilder(
+          animation: Listenable.merge([processedNotifier, insertedNotifier]),
+          builder: (context, _) {
+            final currentProcessed = processedNotifier.value;
+            final totalInserted = insertedNotifier.value;
+            final progress = totalToImport > 0 ? (currentProcessed / totalToImport) : 0.0;
+            final percent = (progress * 100).toInt();
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Importing Contacts...',
+                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 17),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.grey.shade200,
+                      color: const Color(0xFFD7B41A),
+                      minHeight: 10,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$currentProcessed / $totalToImport contacts',
+                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      Text(
+                        '$percent%',
+                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF149508), fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('New Contacts Added:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
+                        Text('$totalInserted', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green, fontFamily: 'Poppins')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    const int chunkSize = 150;
+    final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
+        ? widget.session.email!
+        : (widget.session.phone ?? 'guest@fonebook.com');
+
+    final nav = Navigator.of(context, rootNavigator: true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    for (int i = 0; i < toImport.length; i += chunkSize) {
+      final end = (i + chunkSize < toImport.length) ? i + chunkSize : toImport.length;
+      final chunk = toImport.sublist(i, end);
+
+      try {
+        final importRes = await widget.api.post('import_my_contacts', {
+          'owner_email': email,
+          'contacts': jsonEncode(chunk),
+        });
+
+        if (importRes is Map) {
+          insertedNotifier.value += (importRes['inserted'] as int? ?? chunk.length);
+        } else {
+          insertedNotifier.value += chunk.length;
+        }
+      } catch (e) {
+        debugPrint('Batch import chunk error: $e');
+      }
+
+      processedNotifier.value = end;
+      await Future.delayed(Duration.zero);
+    }
+
+    if (mounted) {
+      nav.pop();
+      final totalInserted = insertedNotifier.value;
+
+      String msg = '';
+      if (totalInserted > 0) {
+        msg = '$totalInserted contact(s) imported successfully';
+      } else {
+        msg = 'Import completed';
+      }
+
+      messenger.showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.green),
+      );
+      _load();
+    }
+  }
+
   Future<void> _deleteContact(MyContactItem item) async {
+    final messenger = ScaffoldMessenger.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -979,10 +1120,12 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
           'id': item.id?.toString() ?? '',
           'owner_email': email,
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Contact deleted successfully'), backgroundColor: Colors.green));
+        if (!mounted) return;
+        messenger.showSnackBar(const SnackBar(content: Text('Contact deleted successfully'), backgroundColor: Colors.green));
         _load();
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting contact: $e')));
+        if (!mounted) return;
+        messenger.showSnackBar(SnackBar(content: Text('Error deleting contact: $e')));
       }
     }
   }

@@ -895,7 +895,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (c, i) {
                   final contact = _results[i];
                   final isFav = _favs.any((e) => e.phone == contact.phone);
-                  final isMyContact = i < _localMatchCount;
+                  final isMyContact = i < _localMatchCount || contact.category == 'my_contact';
 
                   return ContactCard(
                     contact: contact,

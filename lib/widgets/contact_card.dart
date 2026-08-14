@@ -60,17 +60,19 @@ class ContactCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isMyContact ? const Color(0xFFFFFDE7) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isMyContact 
-              ? const Color(0xFFFFECB3)
+              ? const Color(0xFFFFEC8B)
               : const Color(0xFFE9ECEF), 
-            width: 1,
+            width: isMyContact ? 1.2 : 1.0,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: isMyContact 
+                ? const Color(0xFFD7B41A).withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -146,31 +148,29 @@ class ContactCard extends StatelessWidget {
                   ),
 
                   if (isMyContact) ...[
-                    if (contact.service.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        contact.service,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
-                      ),
-                    ],
                     const SizedBox(height: 4),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.person, size: 12, color: Color(0xFF6C757D)),
-                        SizedBox(width: 3),
-                        Text(
-                          'My Contact',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF6C757D),
-                            fontFamily: 'Poppins',
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFBE48A),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.person, size: 10, color: Color(0xFF4A3800)),
+                          SizedBox(width: 3),
+                          Text(
+                            'My Contact',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF4A3800),
+                              fontFamily: 'Poppins',
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ] else ...[
                     if (subtitle.isNotEmpty) ...[
