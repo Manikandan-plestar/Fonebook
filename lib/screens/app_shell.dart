@@ -4,7 +4,7 @@ import '../services/session_store.dart';
 import '../models/user_session.dart';
 import 'home_screen.dart';
 import 'recent_screen.dart';
-import 'favourites_screen.dart';
+import 'my_contacts_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -72,7 +72,7 @@ class _AppShellState extends State<AppShell> {
               onSearchModeChanged: (searching) {},
             )),
             _buildNavigator(1, RecentScreen(api: api, store: store, session: _session)),
-            _buildNavigator(2, FavouritesScreen(api: api, store: store, session: _session)),
+            _buildNavigator(2, MyContactsScreen(api: api, session: _session)),
           ],
         ),
         bottomNavigationBar: Container(
@@ -132,9 +132,13 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 2 ? const Color(0xFF343A40) : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Image.asset('assets/images/star.png', width: 22, height: 22, color: _index == 2 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0)),
+                    child: Icon(
+                      Icons.contacts,
+                      size: 20,
+                      color: _index == 2 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
+                    ),
                   ),
-                  label: 'Favourites',
+                  label: 'Saved',
                 ),
               ],
             ),

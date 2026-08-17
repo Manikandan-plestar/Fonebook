@@ -13,7 +13,7 @@ import '../screens/promote_screen.dart';
 import '../screens/verification_screen.dart';
 import '../screens/profile_list_screen.dart';
 import '../screens/settings_screen.dart';
-import '../screens/my_contacts_screen.dart';
+import '../screens/favourites_screen.dart';
 
 class HeaderMenu extends StatelessWidget {
   final ApiClient? api;
@@ -46,9 +46,9 @@ class HeaderMenu extends StatelessWidget {
         //   return;
         // }
 
-        if (v == 'My Contacts') {
+        if (v == 'Favourites') {
           Navigator.of(context).popUntil((route) => route.isFirst);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => MyContactsScreen(api: effectiveApi, session: effectiveSession)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => FavouritesScreen(api: effectiveApi, store: store ?? SessionStore(), session: effectiveSession)));
           return;
         }
 
@@ -70,8 +70,8 @@ class HeaderMenu extends StatelessWidget {
         //const PopupMenuItem(value: 'Verification', child: Text('Verification')),
         const PopupMenuItem(value: 'Promote', child: Text('Promote')),
         //const PopupMenuItem(value: 'Traffic', child: Text('Traffic')),
-        const PopupMenuItem(value: 'My Contacts', child: Text('My Contacts')),
-        const PopupMenuItem(value: 'Settings', child: Text('Settings')),
+        const PopupMenuItem(value: 'Favourites', child: Text('Favourites')),
+        //const PopupMenuItem(value: 'Settings', child: Text('Settings')),
         const PopupMenuItem(value: 'Logout', child: Text('Logout')),
       ],
     );

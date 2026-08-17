@@ -5,6 +5,7 @@ import '../models/user_session.dart';
 import '../widgets/app_header.dart';
 import 'login_screen.dart';
 import 'profile_list_screen.dart';
+import 'favourites_screen.dart';
 import 'my_contacts_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -21,6 +22,7 @@ class SettingsScreen extends StatelessWidget {
       {'title': 'Promote', 'mode': 'promote', 'icon': Icons.campaign_outlined},
       {'title': 'Traffic reports', 'mode': 'traffic', 'icon': Icons.bar_chart_outlined},
       {'title': 'Profile Settings', 'mode': 'settings', 'icon': Icons.settings_outlined},
+      {'title': 'Favourites', 'mode': 'favourites', 'icon': Icons.star_outline},
       {'title': 'My Contacts', 'mode': 'my_contacts', 'icon': Icons.contacts_outlined},
     ];
 
@@ -112,6 +114,8 @@ class SettingsScreen extends StatelessWidget {
         onTap: () {
           if (mode == 'traffic') {
             _showTrafficMenu(context);
+          } else if (mode == 'favourites') {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => FavouritesScreen(api: api, store: SessionStore(), session: session)));
           } else if (mode == 'my_contacts') {
             Navigator.push(context, MaterialPageRoute(builder: (_) => MyContactsScreen(api: api, session: session)));
           } else {

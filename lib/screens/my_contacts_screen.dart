@@ -55,9 +55,27 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  Future<String> _getEffectiveEmail() async {
+    final currentSession = await SessionStore().read();
+    if (currentSession.email != null && currentSession.email!.trim().isNotEmpty) {
+      return currentSession.email!.trim();
+    }
+    if (currentSession.phone != null && currentSession.phone!.trim().isNotEmpty) {
+      return currentSession.phone!.trim();
+    }
+    if (widget.session.email != null && widget.session.email!.trim().isNotEmpty) {
+      return widget.session.email!.trim();
+    }
+    if (widget.session.phone != null && widget.session.phone!.trim().isNotEmpty) {
+      return widget.session.phone!.trim();
+    }
+    return 'guest@fonebook.com';
+  }
+
   @override
   void initState() {
     super.initState();
+    SessionStore().addListener(_onStoreChanged);
     _searchController.addListener(() {
       if (mounted) {
         setState(() {
@@ -68,10 +86,25 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     _load();
   }
 
+  void _onStoreChanged() {
+    if (mounted) {
+      _load();
+    }
+  }
+
   @override
   void dispose() {
+    SessionStore().removeListener(_onStoreChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant MyContactsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session.email != widget.session.email || oldWidget.session.phone != widget.session.phone) {
+      _load();
+    }
   }
 
   List<MyContactItem> get _filteredContacts {
@@ -93,9 +126,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     if (!mounted) return;
     setState(() => _loading = true);
     try {
-      final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
-          ? widget.session.email!
-          : (widget.session.phone ?? 'guest@fonebook.com');
+      final email = await _getEffectiveEmail();
       final res = await widget.api.post('get_my_contacts', {'email': email, 'owner_email': email});
       if (!mounted) return;
       if (res is List) {
@@ -422,13 +453,12 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           if (formKey.currentState?.validate() == true && phoneError == null) {
                             setDialogState(() => saving = true);
                             try {
-                              final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
-                                  ? widget.session.email!
-                                  : (widget.session.phone ?? 'guest@fonebook.com');
+                              final email = await _getEffectiveEmail();
                               final fullPhone = '${selectedCountry['dial_code']} ${phoneCtrl.text.trim()}';
                               final nav = Navigator.of(ctx);
                               final messenger = ScaffoldMessenger.of(context);
                               await widget.api.post('save_my_contact', {
+                                'email': email,
                                 'owner_email': email,
                                 'name': nameCtrl.text.trim(),
                                 'title': titleCtrl.text.trim(),
@@ -651,14 +681,13 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           if (formKey.currentState?.validate() == true && phoneError == null) {
                             setDialogState(() => saving = true);
                             try {
-                              final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
-                                  ? widget.session.email!
-                                  : (widget.session.phone ?? 'guest@fonebook.com');
+                              final email = await _getEffectiveEmail();
                               final fullPhone = '${selectedCountry['dial_code']} ${phoneCtrl.text.trim()}';
                               final nav = Navigator.of(ctx);
                               final messenger = ScaffoldMessenger.of(context);
                               await widget.api.post('update_my_contact', {
                                 'id': item.id?.toString() ?? '',
+                                'email': email,
                                 'owner_email': email,
                                 'name': nameCtrl.text.trim(),
                                 'title': titleCtrl.text.trim(),
@@ -1047,10 +1076,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       },
     );
 
-    const int chunkSize = 150;
-    final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
-        ? widget.session.email!
-        : (widget.session.phone ?? 'guest@fonebook.com');
+    const int chunkSize = 40;
+    final email = await _getEffectiveEmail();
 
     final nav = Navigator.of(context, rootNavigator: true);
     final messenger = ScaffoldMessenger.of(context);
@@ -1059,23 +1086,33 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       final end = (i + chunkSize < toImport.length) ? i + chunkSize : toImport.length;
       final chunk = toImport.sublist(i, end);
 
-      try {
-        final importRes = await widget.api.post('import_my_contacts', {
-          'owner_email': email,
-          'contacts': jsonEncode(chunk),
-        });
+      bool success = false;
+      int attempts = 0;
+      while (!success && attempts < 3) {
+        attempts++;
+        try {
+          final importRes = await widget.api.post('import_my_contacts', {
+            'email': email,
+            'owner_email': email,
+            'contacts': jsonEncode(chunk),
+          });
 
-        if (importRes is Map) {
-          insertedNotifier.value += (importRes['inserted'] as int? ?? chunk.length);
-        } else {
-          insertedNotifier.value += chunk.length;
+          if (importRes is Map) {
+            insertedNotifier.value += (importRes['inserted'] as int? ?? chunk.length);
+          } else {
+            insertedNotifier.value += chunk.length;
+          }
+          success = true;
+        } catch (e) {
+          debugPrint('Batch import chunk error (attempt $attempts): $e');
+          if (attempts < 3) {
+            await Future.delayed(const Duration(milliseconds: 300));
+          }
         }
-      } catch (e) {
-        debugPrint('Batch import chunk error: $e');
       }
 
       processedNotifier.value = end;
-      await Future.delayed(Duration.zero);
+      await Future.delayed(const Duration(milliseconds: 1));
     }
 
     if (mounted) {
@@ -1113,11 +1150,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
 
     if (confirm == true) {
       try {
-        final email = (widget.session.email != null && widget.session.email!.isNotEmpty)
-            ? widget.session.email!
-            : (widget.session.phone ?? 'guest@fonebook.com');
+        final email = await _getEffectiveEmail();
         await widget.api.post('delete_my_contact', {
           'id': item.id?.toString() ?? '',
+          'email': email,
           'owner_email': email,
         });
         if (!mounted) return;

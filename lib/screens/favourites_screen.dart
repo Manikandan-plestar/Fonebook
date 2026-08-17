@@ -43,6 +43,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
           children: [
             AppHeader(
               title: 'Favourites',
+              onBack: () => Navigator.pop(context),
               showSearch: true,
               searchHint: 'Search Favourites',
               onSearch: (q) {
@@ -72,7 +73,11 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
                     contact: _filtered[i],
                     isFavourite: true,
                     onCall: () => widget.store.addToHistory(_filtered[i]),
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: _filtered[i]))).then((_) => _load()),
+                    onFavouriteToggle: () async {
+                      await widget.store.toggleFavourite(_filtered[i]);
+                      _load();
+                    },
+                    onTap: () {},
                   ),
                 ),
               ),

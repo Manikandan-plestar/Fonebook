@@ -50,6 +50,9 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   Uint8List? _imageBytes;
   Uint8List? _existingImageBytes;
   bool _isLoading = false;
+  bool _showMobile = true;
+  bool _showWhatsapp = true;
+  String _whoContact = 'international';
   final _api = ApiClient();
   final _store = SessionStore();
   DirectoryContact? _existingProfile;
@@ -162,12 +165,39 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
             _downloadImage(p.imageUrl);
           }
           
+          _showMobile = p.showContact.contains('m');
+          _showWhatsapp = p.showContact.contains('w');
+          final rawWho = (p.whoContact ?? 'international').toLowerCase();
+          if (rawWho == 'country') {
+            _whoContact = 'country';
+          } else if (rawWho == 'location') {
+            _whoContact = 'location';
+          } else {
+            _whoContact = 'international';
+          }
+
+          final rawCombined = <String>[];
           if (p.additionalServices != null && p.additionalServices!.isNotEmpty) {
-            _serviceControllers.clear();
             for (var s in p.additionalServices!.split(',')) {
-              if (s.trim().isNotEmpty) _serviceControllers.add(TextEditingController(text: s.trim()));
+              final t = s.trim();
+              if (t.isNotEmpty && !rawCombined.contains(t)) rawCombined.add(t);
             }
-            if (_serviceControllers.isEmpty) _serviceControllers.add(TextEditingController());
+          }
+          if (p.keyword != null && p.keyword!.isNotEmpty) {
+            for (var k in p.keyword!.split(',')) {
+              final t = k.trim();
+              if (t.isNotEmpty && !rawCombined.contains(t)) rawCombined.add(t);
+            }
+          }
+
+          _keywords = List.from(rawCombined);
+
+          _serviceControllers.clear();
+          for (var s in rawCombined) {
+            _serviceControllers.add(TextEditingController(text: s));
+          }
+          if (_serviceControllers.isEmpty) {
+            _serviceControllers.add(TextEditingController());
           }
 
           if (p.additionalPhones != null && p.additionalPhones!.isNotEmpty) {
@@ -199,6 +229,22 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       }
     } catch (e) {
       debugPrint("Download image error: $e");
+    }
+  }
+
+  void _saveShow() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isNotEmpty) {
+      final showStr = '${_showMobile ? 'm' : ''}${_showWhatsapp ? 'w' : ''}';
+      await _api.post('save_show', {'phone': phone, 'show': showStr});
+    }
+  }
+
+  void _saveWho(String val) async {
+    setState(() => _whoContact = val);
+    final phone = _phoneController.text.trim();
+    if (phone.isNotEmpty) {
+      await _api.post('save_access', {'phone': phone, 'who_contact': val});
     }
   }
 
@@ -341,12 +387,19 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       if (_imageBytes != null) imageBase64 = base64Encode(_imageBytes!);
       else if (_existingImageBytes != null) imageBase64 = base64Encode(_existingImageBytes!);
 
-      final services = _serviceControllers.map((e) => e.text.trim()).where((e) => e.isNotEmpty).join(', ');
+      final serviceItems = _serviceControllers.map((e) => e.text.trim()).where((e) => e.isNotEmpty).toList();
+      final allUnified = <String>[];
+      for (final k in _keywords) {
+        if (k.isNotEmpty && !allUnified.contains(k)) allUnified.add(k);
+      }
+      for (final s in serviceItems) {
+        if (s.isNotEmpty && !allUnified.contains(s)) allUnified.add(s);
+      }
+      final unifiedStr = allUnified.join(', ');
+
       final phones = _contactControllers.map((e) => "${e['name']!.text.trim()}:${e['val']!.text.trim()}")
           .where((e) => e.split(':')[0].isNotEmpty && e.split(':')[1].isNotEmpty)
           .join(', ');
-
-      String keywords = widget.phone == null ? _keywords.join(', ') : (_existingProfile?.keyword ?? '');
 
       final Map<String, String?> body = {
         'name': name,
@@ -358,13 +411,13 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         'city': city,
         'location': location,
         'location1': location1,
-        'keyword': keywords,
-        'keywords': keywords,
+        'keyword': unifiedStr,
+        'keywords': unifiedStr,
         'about': _aboutController.text.trim(),
         'landlineno': _landlineController.text.trim(),
         'wpno': _wpController.text.trim(),
         'skypeno': _skypeController.text.trim(),
-        'services': services,
+        'services': unifiedStr,
         'output': phones,
         'phonenos': phones,
         'category': '',
@@ -385,6 +438,10 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       final endpoint = widget.phone != null ? 'savecontacts' : 'savecontacts1';
       final res = await _api.post(endpoint, finalBody);
       if (res.toString().toLowerCase().contains('success')) {
+        final showStr = '${_showMobile ? 'm' : ''}${_showWhatsapp ? 'w' : ''}';
+        unawaited(_api.post('save_show', {'phone': phone, 'show': showStr}));
+        unawaited(_api.post('save_access', {'phone': phone, 'who_contact': _whoContact}));
+
         final currentSession = await _store.read();
         final session = UserSession(
           phone: phone,
@@ -421,7 +478,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     switch (type) {
       case 'name': return 'Full name';
       case 'title': return 'Profession';
-      case 'about': return 'About / Bio / Business Description';
+      case 'about': return 'About';
       case 'skype': return 'Skype ID / Website URL';
       case 'services': return 'Services';
       case 'service_item': return 'Service Item';
@@ -512,54 +569,21 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: const [
-                                Icon(Icons.location_on, color: Colors.blue, size: 17),
+                                Icon(Icons.location_on, color: Color(0xFF495057), size: 17),
                                 SizedBox(width: 4),
-                                Text('Get Address from GPS', 
-                                               style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins')),
+                                Text('Get Address', 
+                                               style: TextStyle(color: Color(0xFF343A40), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins')),
                               ],
                             ),
                           ),
                           InkWell(
                             onTap: () => setState(() => _locationController.clear()),
-                            child: const Text('Clear Address', 
-                                           style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins', decoration: TextDecoration.none)),
+                            child: const Text('Clear ', 
+                                           style: TextStyle(color: Color(0xFF495057), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins', decoration: TextDecoration.none)),
                           ),
                         ],
                       ),
                     ),
-
-                    if (!isEdit) ...[
-                      const SizedBox(height: 10),
-                      const Divider(color: Color(0xFFD7D7D7)),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                        child: Align(alignment: Alignment.centerLeft, child: Text('Keywords', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12, fontFamily: 'Poppins'))),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 30),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _tagController,
-                                onSubmitted: (_) => _addTag(),
-                                decoration: const InputDecoration(hintText: 'Add Keyword...', border: UnderlineInputBorder()),
-                              ),
-                            ),
-                            TextButton(onPressed: _addTag, child: const Text('Add')),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 30),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _keywords.map((k) => _buildChip(k)).toList(),
-                        ),
-                      ),
-                    ],
 
                     if (isEdit) ...[
                       const SizedBox(height: 10),
@@ -582,6 +606,85 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                       }),
                       TextButton(onPressed: () => setState(() => _serviceControllers.add(TextEditingController())), child: const Text('+Add More', style: TextStyle(color: Color(0xFF6C757D), fontWeight: FontWeight.bold, fontFamily: 'Poppins'))),
                     ],
+
+                    const SizedBox(height: 10),
+
+                    // Access / Target Section Card
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE9ECEF)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Target',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Who can contact you',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF495057), fontFamily: 'Poppins'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                SizedBox(
+                                  width: 160,
+                                  child: DropdownButtonFormField<String>(
+                                    value: _whoContact,
+                                    isExpanded: true,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      filled: true,
+                                      fillColor: const Color(0xFFFFF3CD),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: const BorderSide(color: Color(0xFFFFECB3)),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: const BorderSide(color: Color(0xFFFFECB3)),
+                                      ),
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: 'international',
+                                        child: Text('International', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF856404), fontFamily: 'Poppins')),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'country',
+                                        child: Text('Country', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF856404), fontFamily: 'Poppins')),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'location',
+                                        child: Text('Current Location', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF856404), fontFamily: 'Poppins')),
+                                      ),
+                                    ],
+                                    onChanged: (v) => _saveWho(v!),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                     const SizedBox(height: 25),
                     Padding(
@@ -655,6 +758,40 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSwitchTile(String title, bool value, ValueChanged<bool> onChanged) {
+    bool canToggle = true;
+    if (title == 'Whatsapp' && _wpController.text.trim().isEmpty) canToggle = false;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 15,
+                color: canToggle ? const Color(0xFF212529) : Colors.grey,
+                fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+          Switch(
+            value: value && canToggle,
+            onChanged: (v) {
+              if (!canToggle && v) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("You didn't enter the ${title.toLowerCase()}.")));
+                return;
+              }
+              onChanged(v);
+            },
+            activeColor: const Color(0xFFD7B41A),
+          ),
+        ],
       ),
     );
   }

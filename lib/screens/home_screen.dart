@@ -972,12 +972,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     isSponsored: isSponsored,
                     isFirstThree: i < 3,
                     onCall: isMyContact ? null : () => widget.store.addToHistory(contact),
-                    onTap: isMyContact ? () {} : () {
-                      widget.onSearchModeChanged(false);
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
-                        _loadFavs();
-                        if (_isSearching) widget.onSearchModeChanged(true);
-                      });
+                    onFavouriteToggle: () async {
+                      await widget.store.toggleFavourite(contact);
+                      _loadFavs();
+                    },
+                    onTap: () {
+                      // DetailsScreen navigation temporarily disabled. Uncomment below to re-enable later:
+                      // widget.onSearchModeChanged(false);
+                      // Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
+                      //   _loadFavs();
+                      //   if (_isSearching) widget.onSearchModeChanged(true);
+                      // });
                     },
                   );
                 },

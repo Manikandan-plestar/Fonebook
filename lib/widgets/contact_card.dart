@@ -9,6 +9,7 @@ class ContactCard extends StatelessWidget {
   final DirectoryContact contact;
   final VoidCallback onTap;
   final VoidCallback? onCall;
+  final VoidCallback? onFavouriteToggle;
   final bool isFavourite;
   final bool showTime;
   final bool isFirstThree;
@@ -19,6 +20,7 @@ class ContactCard extends StatelessWidget {
     required this.contact,
     required this.onTap,
     this.onCall,
+    this.onFavouriteToggle,
     this.isFavourite = false,
     this.showTime = false,
     this.isFirstThree = false,
@@ -200,6 +202,23 @@ class ContactCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+
+            // Star / Favourite Button
+            if (onFavouriteToggle != null) ...[
+              InkWell(
+                onTap: onFavouriteToggle,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    isFavourite ? Icons.star : Icons.star_border,
+                    color: isFavourite ? const Color(0xFFF6D207) : Colors.grey.shade600,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+            ],
 
             // Call Button
             InkWell(
