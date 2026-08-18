@@ -474,6 +474,82 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     }
   }
 
+  Future<void> _deleteProfile() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.delete_forever, color: Colors.red, size: 24),
+            SizedBox(width: 8),
+            Text(
+              'Delete Profile',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF212529)),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to delete this profile permanently? This action cannot be undone.',
+          style: TextStyle(fontFamily: 'Poppins', fontSize: 14, color: Color(0xFF495057)),
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, color: Color(0xFF6C757D)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text(
+              'Delete',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+      try {
+        final phone = _phoneController.text.trim();
+        await _api.post('delete_my_contact', {
+          'phone': phone,
+          'phone_no': phone,
+          'phone1': widget.phone ?? phone,
+          'email': widget.email,
+          'owner_email': widget.email,
+        });
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile deleted permanently.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        Navigator.pop(context);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting profile: $e')),
+        );
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    }
+  }
+
   String _getLabel(String type) {
     switch (type) {
       case 'name': return 'Full name';
@@ -688,22 +764,70 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
 
                     const SizedBox(height: 25),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 30),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _save,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6C757D),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                          ),
-                          child: _isLoading ? const CircularProgressIndicator(color: Color(0xFF272000)) 
-                                           : Text(isEdit ? 'Update' : 'Add', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
-                        ),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: widget.phone != null
+                          ? Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 52,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _isLoading ? null : _deleteProfile,
+                                     
+                                      label: const Text(
+                                        'Delete',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red, fontFamily: 'Poppins'),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        side: const BorderSide(color: Colors.red, width: 1.5),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 52,
+                                    child: ElevatedButton(
+                                      onPressed: _isLoading ? null : _save,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF6C757D),
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      child: _isLoading 
+                                          ? const SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                            )
+                                          : const Text(
+                                              'Update',
+                                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Poppins'),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : SizedBox(
+                              width: double.infinity,
+                              height: 54,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _save,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF6C757D),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: _isLoading 
+                                    ? const CircularProgressIndicator(color: Color(0xFF272000)) 
+                                    : const Text('Add', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                              ),
+                            ),
                     ),
                     const SizedBox(height: 40),
                   ],

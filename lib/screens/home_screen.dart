@@ -299,7 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final normalApiMatches = <DirectoryContact>[];
 
       for (final item in apiResults) {
-        final isPromoted = item.priority == '0';
+        final bal = double.tryParse(item.priorityBalance) ?? 0.0;
+        final isPromoted = bal > 0;
         if (isPromoted) {
           sponsoredMatches.add(item);
         } else {
@@ -349,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final newBal = (currentBal - impressionCost).clamp(0.0, double.infinity);
       final newBalStr = newBal.toStringAsFixed(2);
-      final isStillPromoted = newBal > 0 && item.priority == '0';
+      final isStillPromoted = newBal > 0;
 
       try {
         await widget.api.post('savepriority', {

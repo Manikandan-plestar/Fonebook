@@ -88,12 +88,12 @@ class ContactCard extends StatelessWidget {
               children: [
                 if (isSponsoredCard)
                   const Padding(
-                    padding: EdgeInsets.only(bottom: 2),
+                    padding: EdgeInsets.only(bottom: 3),
                     child: Text(
                       'Sponsored',
                       style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                         color: Color(0xFF4A4A4A),
                         fontFamily: 'Poppins',
                       ),

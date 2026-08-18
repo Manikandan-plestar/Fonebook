@@ -63,6 +63,10 @@ class _PromoteScreenState extends State<PromoteScreen> {
         });
 
         if (mounted) {
+          setState(() {
+            _balance = newBalStr;
+            _isPromoting = true;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Payment Successful! Added ₹${creditAmount.toStringAsFixed(2)} to ${widget.contact.name}\'s Promotion Balance.'),
@@ -96,10 +100,30 @@ class _PromoteScreenState extends State<PromoteScreen> {
       if (balRes is List && balRes.isNotEmpty) {
         foundBal = balRes[0]['priority_balance']?.toString() ?? '0.00';
         final data = balRes[0];
+        final currentBal = double.tryParse(foundBal) ?? 0.0;
+        final dbPriority = data['priority']?.toString() ?? '1';
+
+        bool isProm = dbPriority == '0';
+        if (currentBal > 0 && dbPriority == '1') {
+          isProm = true;
+          await _api.post('savepriority', {
+            'phone': widget.contact.phone,
+            'priority_amount': foundBal,
+            'priority': '0',
+          });
+        } else if (currentBal <= 0 && dbPriority == '0') {
+          isProm = false;
+          await _api.post('savepriority', {
+            'phone': widget.contact.phone,
+            'priority_amount': '0.00',
+            'priority': '1',
+          });
+        }
+
         if (mounted) {
           setState(() {
             _balance = foundBal;
-            _isPromoting = data['priority'] == '0'; 
+            _isPromoting = isProm; 
             _isInternational = data['promote_international'] == 'yes';
             _searchType = data['search_type'] ?? 'broad';
             _selectedCountry = data['promote_country'] ?? 'All';
