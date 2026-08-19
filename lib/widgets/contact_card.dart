@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/contact.dart';
 import '../services/api_client.dart';
 
@@ -108,11 +109,13 @@ class ContactCard extends StatelessWidget {
                   ),
                   child: ClipOval(
                     child: contact.imageUrl.isNotEmpty
-                        ? FadeInImage.assetNetwork(
-                            placeholder: 'assets/images/user.png',
-                            image: contact.imageUrl,
+                        ? CachedNetworkImage(
+                            imageUrl: contact.imageUrl,
                             fit: BoxFit.cover,
-                            imageErrorBuilder: (c, e, s) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
+                            memCacheWidth: 150,
+                            memCacheHeight: 150,
+                            placeholder: (context, url) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
+                            errorWidget: (context, url, error) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
                           )
                         : Image.asset('assets/images/user.png', fit: BoxFit.cover),
                   ),

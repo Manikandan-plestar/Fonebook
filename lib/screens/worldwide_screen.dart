@@ -5,7 +5,6 @@ import '../models/user_session.dart';
 import '../models/contact.dart';
 import '../widgets/contact_card.dart';
 import '../widgets/app_header.dart';
-import 'details_screen.dart';
 
 class WorldwideScreen extends StatefulWidget {
   final ApiClient api;
@@ -106,7 +105,7 @@ class _WorldwideScreenState extends State<WorldwideScreen> {
                               itemBuilder: (c, i) => ContactCard(
                                 contact: _list[i],
                                 onCall: () => SessionStore().addToHistory(_list[i]),
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: _list[i]))),
+                                onTap: () {},
                               ),
                             ),
                 ),

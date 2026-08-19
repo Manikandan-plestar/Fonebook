@@ -2,7 +2,7 @@ name: fonebook
 description: "Fone Book is a modern-day global telephone directory app that contains the contacts information of individuals, professionals, organizations and freelancers."
 publish_to: 'none'
 
-version: 1.0.6+43
+version: 1.0.7+44
 
 environment:
   sdk: ^3.5.0
@@ -20,19 +20,20 @@ dependencies:
   image_picker: ^1.2.2
   intl: ^0.20.2
   in_app_purchase: ^3.3.0
-  geocoding: ^3.0.0
+  geocoding: ^5.0.0
   share_plus: ^10.1.2
   path_provider: ^2.1.5
   country_state_city: ^0.1.6
-  flutter_contacts: ^1.1.9+2
+  flutter_contacts: ^2.1.0
   call_log: ^6.0.1
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
 
 flutter_launcher_icons:
   android: "ic_launcher"

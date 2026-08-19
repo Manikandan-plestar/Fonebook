@@ -8,7 +8,6 @@ import '../models/user_session.dart';
 import '../models/contact.dart';
 import '../widgets/contact_card.dart';
 import '../widgets/app_header.dart';
-import 'details_screen.dart';
 
 class RecentScreen extends StatefulWidget {
   final ApiClient api;
@@ -228,7 +227,7 @@ class _RecentScreenState extends State<RecentScreen> {
                       isMyContact: isMyContact,
                       showTime: true,
                       onCall: () => widget.store.addToHistory(contact).then((_) => _load()),
-                      onTap: isMyContact ? () {} : () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) => _load()),
+                      onTap: () {},
                     );
                   },
                 ),

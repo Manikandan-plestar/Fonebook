@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (!kIsWeb) {
-          List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+          List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
           if (placemarks.isNotEmpty) {
             Placemark p = placemarks.first;
             final subLocality = p.subLocality?.trim();
@@ -377,7 +377,7 @@ class _HomeScreenState extends State<HomeScreen> {
         String cityArea = "Current Location";
         
         if (!kIsWeb) {
-          List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+          List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
           if (placemarks.isNotEmpty) {
             Placemark p = placemarks[0];
             cityArea = p.subLocality != null ? "${p.subLocality}, ${p.locality}" : (p.locality ?? '');
@@ -491,7 +491,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
         
         if (!kIsWeb) {
-          List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+          List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
           for (var p in placemarks) {
             if (p.subLocality != null && p.subLocality!.trim().isNotEmpty) {
               areas.add(p.subLocality!.trim());
@@ -532,48 +532,72 @@ class _HomeScreenState extends State<HomeScreen> {
     };
   }
 
-  Future<String?> _validateGooglePlace(String query, String city) async {
-    if (query.trim().length < 2) return null;
+  Future<Map<String, String>?> _validateGooglePlace(String query) async {
+    final q = query.trim();
+    if (q.length < 2) return null;
     try {
-      String cleanCity = city.trim();
-      if (cleanCity == 'Current Location' || cleanCity.startsWith('Location(')) {
-        cleanCity = widget.session.place1 ?? '';
-      }
-
-      final searchAddress = cleanCity.isNotEmpty && !query.toLowerCase().contains(cleanCity.toLowerCase())
-          ? "${query.trim()}, $cleanCity"
-          : query.trim();
-
-      List<Location> locations = await locationFromAddress(searchAddress);
+      final geocoding = Geocoding();
+      List<Location> locations = await geocoding.locationFromAddress(q);
       if (locations.isNotEmpty) {
         final loc = locations.first;
-        List<Placemark> placemarks = await placemarkFromCoordinates(loc.latitude, loc.longitude);
+        List<Placemark> placemarks = await geocoding.placemarkFromCoordinates(loc.latitude, loc.longitude);
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
-          final placemarkCity = (p.locality ?? p.subAdministrativeArea ?? '').trim().toLowerCase();
-          final targetCity = cleanCity.trim().toLowerCase();
+          final subLoc = p.subLocality?.trim();
+          final thoroughfare = p.thoroughfare?.trim();
+          final name = p.name?.trim();
+          final locality = p.locality?.trim();
+          final adminArea = p.administrativeArea?.trim();
+          final country = p.country?.trim();
 
-          // STRICT CITY BOUNDARY ENFORCEMENT:
-          // If the place is located outside the active live city, reject it!
-          if (targetCity.isNotEmpty && placemarkCity.isNotEmpty) {
-            if (!placemarkCity.contains(targetCity) && !targetCity.contains(placemarkCity)) {
-              debugPrint("Disallowing place '$query' in '$placemarkCity' outside active city '$cleanCity'");
-              return null;
-            }
+          final formattedQuery = q.split(' ').map((w) => w.isNotEmpty ? "${w[0].toUpperCase()}${w.substring(1)}" : "").join(' ');
+          final qLower = q.toLowerCase();
+
+          String selectedName = formattedQuery;
+          String subtitle = [locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != qLower).join(', ');
+
+          if (subLoc != null && subLoc.isNotEmpty && subLoc.toLowerCase().contains(qLower)) {
+            selectedName = subLoc;
+            subtitle = [locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != subLoc.toLowerCase()).join(', ');
+          } else if (thoroughfare != null && thoroughfare.isNotEmpty && thoroughfare.toLowerCase().contains(qLower)) {
+            selectedName = thoroughfare;
+            subtitle = [subLoc, locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != thoroughfare.toLowerCase()).join(', ');
+          } else if (name != null && name.isNotEmpty && name.toLowerCase().contains(qLower)) {
+            selectedName = name;
+            subtitle = [subLoc, locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != name.toLowerCase()).join(', ');
+          } else if (locality != null && locality.isNotEmpty && locality.toLowerCase().contains(qLower)) {
+            selectedName = locality;
+            subtitle = [adminArea, country].where((s) => s != null && s.isNotEmpty).join(', ');
+          } else if (adminArea != null && adminArea.isNotEmpty && adminArea.toLowerCase().contains(qLower)) {
+            selectedName = adminArea;
+            subtitle = (country != null && country.isNotEmpty) ? "State / Region in $country" : "State / Region";
+          } else if (country != null && country.isNotEmpty && country.toLowerCase().contains(qLower)) {
+            selectedName = country;
+            subtitle = "Country";
+          } else {
+            selectedName = formattedQuery;
+            subtitle = [subLoc, locality, adminArea, country]
+                .where((s) => s != null && s.isNotEmpty && s.toLowerCase() != qLower)
+                .join(', ');
           }
 
-          final subLoc = p.subLocality?.trim();
-          final road = p.thoroughfare?.trim();
-          final name = p.name?.trim();
+          if (subtitle.isEmpty) {
+            subtitle = 'Google Maps Verified Location';
+          }
 
-          if (subLoc != null && subLoc.isNotEmpty) return subLoc;
-          if (road != null && road.isNotEmpty) return road;
-          if (name != null && name.isNotEmpty) return name;
+          return {
+            'name': selectedName,
+            'subtitle': subtitle,
+          };
         }
-        return query.trim();
+        final formattedQuery = q.split(' ').map((w) => w.isNotEmpty ? "${w[0].toUpperCase()}${w.substring(1)}" : "").join(' ');
+        return {
+          'name': formattedQuery,
+          'subtitle': 'Google Maps Verified Location',
+        };
       }
     } catch (e) {
-      debugPrint("Geocoding validation error: $e");
+      debugPrint("Worldwide geocoding error: $e");
     }
     return null;
   }
@@ -621,7 +645,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Icon(Icons.location_on, color: Color(0xFF6C757D)),
                           const SizedBox(width: 8),
                           Text(
-                            'Choose Area (${currentCity.isNotEmpty ? currentCity : "GPS"})',
+                            'Choose Area',
                             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Color(0xFF212529)),
                           ),
                           const Spacer(),
@@ -692,9 +716,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ],
                                 ),
                               )
-                            : filteredAreas.isEmpty && filter.isNotEmpty
-                                ? FutureBuilder<String?>(
-                                    future: _validateGooglePlace(filter, currentCity),
+                            : filter.isNotEmpty
+                                ? FutureBuilder<Map<String, String>?>(
+                                    future: _validateGooglePlace(filter),
                                     builder: (vContext, vSnapshot) {
                                       if (vSnapshot.connectionState == ConnectionState.waiting) {
                                         return Center(
@@ -703,40 +727,61 @@ class _HomeScreenState extends State<HomeScreen> {
                                             children: const [
                                               SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Color(0xFF6C757D), strokeWidth: 2)),
                                               SizedBox(width: 10),
-                                              Text('Validating place with Google Maps...', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Color(0xFF6C757D))),
+                                              Text('Searching location worldwide...', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Color(0xFF6C757D))),
                                             ],
                                           ),
                                         );
                                       }
 
-                                      final validArea = vSnapshot.data;
+                                      final placeMap = vSnapshot.data;
+                                      final validArea = placeMap?['name'];
+                                      final subtitle = placeMap?['subtitle'] ?? 'Google Maps Verified Location';
+
                                       if (validArea != null && validArea.isNotEmpty) {
-                                        return ListTile(
-                                          leading: const Icon(Icons.location_on, color: Color(0xFF6C757D)),
-                                          title: Text(validArea, style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF212529))),
-                                          subtitle: Text('Google Maps Verified Location in $currentCity', style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Color(0xFF6C757D))),
-                                          trailing: const Icon(Icons.check_circle, color: Color(0xFF6C757D), size: 20),
-                                          onTap: () {
-                                            Navigator.pop(bContext);
-                                            setState(() {
-                                              _userHasCustomScope = true;
-                                              _scopeLabel = 'Location($validArea)';
-                                              _selectedLocation = validArea;
-                                            });
-                                            if (_search.text.isNotEmpty) _doSearch(_search.text);
-                                          },
+                                        return ListView(
+                                          children: [
+                                            if (filteredAreas.isNotEmpty) ...[
+                                              for (final area in filteredAreas)
+                                                ListTile(
+                                                  dense: true,
+                                                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                                                  leading: const Icon(Icons.place, color: Color(0xFF6C757D), size: 20),
+                                                  title: Text(area, style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF212529))),
+                                                  onTap: () {
+                                                    Navigator.pop(bContext);
+                                                    setState(() {
+                                                      _userHasCustomScope = true;
+                                                      _scopeLabel = 'Location($area)';
+                                                      _selectedLocation = area;
+                                                    });
+                                                    if (_search.text.isNotEmpty) _doSearch(_search.text);
+                                                  },
+                                                ),
+                                              const Divider(),
+                                            ],
+                                            ListTile(
+                                              leading: const Icon(Icons.location_on, color: Color(0xFF6C757D)),
+                                              title: Text(validArea, style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF212529))),
+                                              subtitle: Text(subtitle, style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Color(0xFF6C757D))),
+                                              trailing: const Icon(Icons.check_circle, color: Color(0xFF6C757D), size: 20),
+                                              onTap: () {
+                                                Navigator.pop(bContext);
+                                                setState(() {
+                                                  _userHasCustomScope = true;
+                                                  _scopeLabel = 'Location($validArea)';
+                                                  _selectedLocation = validArea;
+                                                });
+                                                if (_search.text.isNotEmpty) _doSearch(_search.text);
+                                              },
+                                            ),
+                                          ],
                                         );
                                       }
 
                                       return ListTile(
                                         leading: const Icon(Icons.location_off_outlined, color: Colors.redAccent),
                                         title: const Text('Place not found', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Colors.redAccent)),
-                                        subtitle: Text(
-                                          currentCity.isNotEmpty && currentCity != 'Current Location'
-                                              ? '"$filter" is not located in $currentCity'
-                                              : '"$filter" is not a recognized location in Google Maps',
-                                          style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
-                                        ),
+                                        subtitle: Text('"$filter" is not a recognized location on Google Maps', style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
                                         onTap: null,
                                       );
                                     },
@@ -1051,21 +1096,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         });
                       }
                     },
-                    onSubmitted: _doSearch,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (val) => _doSearch(val),
                     onChanged: (v) {
-                      if (v.isNotEmpty && !_isSearching) {
-                        setState(() {
-                          _isSearching = true;
-                          widget.onSearchModeChanged(true);
-                        });
-                      } else if (v.isEmpty && _isSearching) {
+                      if (v.trim().isEmpty) {
                         setState(() {
                           _isSearching = false;
                           _results.clear();
                           _hasSearched = false;
-                          _focus.unfocus();
                           widget.onSearchModeChanged(false);
                         });
+                      } else {
+                        if (!_isSearching) {
+                          setState(() {
+                            _isSearching = true;
+                            widget.onSearchModeChanged(true);
+                          });
+                        }
                       }
                     },
                     decoration: const InputDecoration(
@@ -1077,7 +1124,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: const TextStyle(fontSize: 16, fontFamily: 'Poppins', color: Color(0xFF202124)),
                   ),
                 ),
-              if (_search.text.isNotEmpty)
+              if (_search.text.isNotEmpty) ...[
+                IconButton(
+                  icon: const Icon(Icons.search, color: Color(0xFF5F6368)),
+                  onPressed: () => _doSearch(_search.text),
+                ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Color(0xFF5F6368)),
                   onPressed: () {
@@ -1091,6 +1142,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                   },
                 ),
+              ],
             ],
           ),
         ),

@@ -324,7 +324,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       }
 
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      final placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      final placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
         final street = place.street ?? '';

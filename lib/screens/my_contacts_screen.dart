@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
@@ -728,7 +729,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
 
   Future<void> _importDeviceContacts() async {
     try {
-      if (!await FlutterContacts.requestPermission(readonly: true)) {
+      final granted = await FlutterContacts.permissions.request(PermissionType.read) == PermissionStatus.granted;
+      if (!granted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Permission to access device contacts was denied.')),
@@ -738,7 +740,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       }
 
       setState(() => _loading = true);
-      List<Contact> deviceContacts = await FlutterContacts.getContacts(withProperties: true);
+      List<Contact> deviceContacts = await FlutterContacts.getAll(properties: ContactProperty.values.toSet());
       setState(() => _loading = false);
 
       if (deviceContacts.isEmpty) {
@@ -797,7 +799,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                 } else {
                   filtered = indexedContacts.where((entry) {
                     final c = entry.value;
-                    final nameMatch = c.displayName.toLowerCase().contains(q);
+                    final nameMatch = (c.displayName ?? '').toLowerCase().contains(q);
                     final phoneMatch = c.phones.any((p) => p.number.contains(q));
                     return nameMatch || phoneMatch;
                   }).toList();
@@ -873,11 +875,11 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                 final item = entry.value;
                                 final isSelected = selectedIndices.contains(originalIndex);
                                 final phone = item.phones.isNotEmpty ? item.phones.first.number : 'No Phone';
-                                final job = item.organizations.isNotEmpty ? item.organizations.first.title : '';
+                                final job = item.organizations.isNotEmpty ? (item.organizations.first.jobTitle ?? item.organizations.first.name ?? '') : '';
 
                                 return CheckboxListTile(
                                   value: isSelected,
-                                  title: Text(item.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  title: Text(item.displayName ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
                                   subtitle: Text(job.isNotEmpty ? '${_formatPhoneDisplay(phone)} • $job' : _formatPhoneDisplay(phone)),
                                   onChanged: (val) {
                                     setModalState(() {
@@ -929,58 +931,78 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     Set<int> selectedIndices,
     List<String> sortedCodes,
   ) async {
-    final existingNationalDigits = _contacts.map((c) {
-      final d = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
-      return d.length >= 10 ? d.substring(d.length - 10) : d;
-    }).where((d) => d.isNotEmpty).toSet();
-
-    final seenInImport = <String>{};
-    final toImport = <Map<String, String>>[];
-    int alreadyExistsCount = 0;
-
-    for (final idx in selectedIndices) {
+    final existingPhones = _contacts.map((c) => c.phone).toList();
+    final selectedItems = selectedIndices.map((idx) {
       final item = deviceContacts[idx];
-      final rawPhone = item.phones.isNotEmpty ? item.phones.first.number : '';
-      final title = item.organizations.isNotEmpty ? item.organizations.first.title : '';
+      return {
+        'rawPhone': item.phones.isNotEmpty ? item.phones.first.number : '',
+        'title': item.organizations.isNotEmpty ? (item.organizations.first.jobTitle ?? item.organizations.first.name ?? '') : '',
+        'name': item.displayName ?? '',
+      };
+    }).toList();
 
-      String cleanP = rawPhone.replaceAll(RegExp(r'[\(\)\-\s\.]'), '').trim();
-      if (cleanP.isEmpty) continue;
+    final result = await Isolate.run(() {
+      final existingNationalDigits = existingPhones.map((phone) {
+        final d = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        return d.length >= 10 ? d.substring(d.length - 10) : d;
+      }).where((d) => d.isNotEmpty).toSet();
 
-      if (!cleanP.startsWith('+')) {
-        if (cleanP.length > 10 && cleanP.startsWith('0')) {
-          cleanP = cleanP.substring(1);
-        }
-        cleanP = '+91 $cleanP';
-      } else {
-        String code = '+91';
-        String rest = cleanP.substring(1);
-        for (final dc in sortedCodes) {
-          if (cleanP.startsWith(dc)) {
-            code = dc;
-            rest = cleanP.substring(dc.length);
-            break;
+      final seenInImport = <String>{};
+      final toImport = <Map<String, String>>[];
+      int alreadyExistsCount = 0;
+
+      for (final raw in selectedItems) {
+        final rawPhone = raw['rawPhone'] ?? '';
+        final title = raw['title'] ?? '';
+        final name = raw['name'] ?? '';
+
+        String cleanP = rawPhone.replaceAll(RegExp(r'[\(\)\-\s\.]'), '').trim();
+        if (cleanP.isEmpty) continue;
+
+        if (!cleanP.startsWith('+')) {
+          if (cleanP.length > 10 && cleanP.startsWith('0')) {
+            cleanP = cleanP.substring(1);
           }
+          cleanP = '+91 $cleanP';
+        } else {
+          String code = '+91';
+          String rest = cleanP.substring(1);
+          for (final dc in sortedCodes) {
+            if (cleanP.startsWith(dc)) {
+              code = dc;
+              rest = cleanP.substring(dc.length);
+              break;
+            }
+          }
+          cleanP = '$code $rest';
         }
-        cleanP = '$code $rest';
+
+        final digits = cleanP.replaceAll(RegExp(r'[^0-9]'), '');
+        final national = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
+
+        if (national.isNotEmpty) {
+          if (existingNationalDigits.contains(national) || seenInImport.contains(national)) {
+            alreadyExistsCount++;
+            continue;
+          }
+          seenInImport.add(national);
+        }
+
+        toImport.add({
+          'name': name,
+          'title': title,
+          'phone': cleanP,
+        });
       }
 
-      final digits = cleanP.replaceAll(RegExp(r'[^0-9]'), '');
-      final national = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
+      return {
+        'toImport': toImport,
+        'alreadyExistsCount': alreadyExistsCount,
+      };
+    });
 
-      if (national.isNotEmpty) {
-        if (existingNationalDigits.contains(national) || seenInImport.contains(national)) {
-          alreadyExistsCount++;
-          continue;
-        }
-        seenInImport.add(national);
-      }
-
-      toImport.add({
-        'name': item.displayName,
-        'title': title,
-        'phone': cleanP,
-      });
-    }
+    final toImport = result['toImport'] as List<Map<String, String>>;
+    final alreadyExistsCount = result['alreadyExistsCount'] as int;
 
     if (toImport.isEmpty) {
       if (mounted) {
