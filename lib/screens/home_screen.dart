@@ -265,10 +265,13 @@ class _HomeScreenState extends State<HomeScreen> {
               .where((e) {
                 final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
                 final serviceMatch = e.service.toLowerCase().contains(query);
+                final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
+                                     (e.tags?.toLowerCase().contains(query) ?? false) ||
+                                     (e.additionalServices?.toLowerCase().contains(query) ?? false);
                 final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
 
-                // For global contacts table: ONLY allow profession (service) field or phone match
-                final textMatch = serviceMatch || phoneMatch;
+                // Allow match by profession (service), keywords, or phone number
+                final textMatch = serviceMatch || keywordMatch || phoneMatch;
                 if (!textMatch) return false;
 
                 final who = (e.whoContact ?? 'international').toLowerCase();
@@ -307,6 +310,15 @@ class _HomeScreenState extends State<HomeScreen> {
           normalApiMatches.add(item);
         }
       }
+
+      // Prioritize primary Service matches first, followed by Keyword matches
+      normalApiMatches.sort((a, b) {
+        final aService = a.service.toLowerCase().contains(query);
+        final bService = b.service.toLowerCase().contains(query);
+        if (aService && !bService) return -1;
+        if (!aService && bService) return 1;
+        return 0;
+      });
 
       final combined = [...localMatches, ...sponsoredMatches, ...normalApiMatches];
 
