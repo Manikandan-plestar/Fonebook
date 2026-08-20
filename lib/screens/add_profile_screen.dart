@@ -15,6 +15,7 @@ import '../models/contact.dart';
 import '../services/location_service.dart';
 import '../widgets/app_header.dart';
 import 'app_shell.dart';
+import 'profile_list_screen.dart';
 
 class AddProfileScreen extends StatefulWidget {
   final String email;
@@ -461,14 +462,43 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          if (widget.phone != null) Navigator.pop(context);
-          else Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AppShell()));
+          final hasAppShell = context.findAncestorWidgetOfExactType<AppShell>() != null;
+          if (widget.phone != null && Navigator.canPop(context)) {
+            Navigator.pop(context);
+          } else if (hasAppShell) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProfileListScreen(
+                  api: _api,
+                  session: session,
+                  mode: 'profile',
+                ),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AppShell(showProfileList: true),
+              ),
+            );
+          }
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.toString())));
       }
     } catch (e) {
       debugPrint("Save error: $e");
+      if (mounted) {
+        String msg = 'Error saving profile: $e';
+        if (e.toString().contains('SocketException') || e.toString().contains('Network is unreachable')) {
+          msg = 'No internet connection. Please check your network connection.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
     }

@@ -45,6 +45,9 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      if (_currentSession.email == null || _currentSession.email!.isEmpty) {
+        _currentSession = await SessionStore().read();
+      }
       final res = await widget.api.get('check_search_type1', {'email': _currentSession.email});
       if (res is List) {
         // Filter out "ghost" profiles that don't have a valid name or phone

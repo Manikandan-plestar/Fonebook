@@ -5,9 +5,12 @@ import '../models/user_session.dart';
 import 'home_screen.dart';
 import 'recent_screen.dart';
 import 'my_contacts_screen.dart';
+import 'profile_list_screen.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  final int initialIndex;
+  final bool showProfileList;
+  const AppShell({super.key, this.initialIndex = 0, this.showProfileList = false});
   @override
   State<AppShell> createState() => _AppShellState();
 }
@@ -27,6 +30,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    _index = widget.initialIndex;
     _refresh();
     store.addListener(_refresh);
   }
@@ -151,6 +155,23 @@ class _AppShellState extends State<AppShell> {
   Widget _buildNavigator(int index, Widget rootPage) {
     return Navigator(
       key: _navigatorKeys[index],
+      onGenerateInitialRoutes: (navigator, initialRoute) {
+        final routes = <Route<dynamic>>[
+          MaterialPageRoute(builder: (context) => rootPage),
+        ];
+        if (index == 0 && widget.showProfileList) {
+          routes.add(
+            MaterialPageRoute(
+              builder: (context) => ProfileListScreen(
+                api: api,
+                session: _session,
+                mode: 'profile',
+              ),
+            ),
+          );
+        }
+        return routes;
+      },
       onGenerateRoute: (routeSettings) {
         return MaterialPageRoute(builder: (context) => rootPage);
       },

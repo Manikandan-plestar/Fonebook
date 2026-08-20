@@ -68,7 +68,13 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        String msg = 'Error: $e';
+        if (e.toString().contains('SocketException') || e.toString().contains('Network is unreachable')) {
+          msg = 'No internet connection. Please check your Wi-Fi or cellular data on your device/emulator.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
