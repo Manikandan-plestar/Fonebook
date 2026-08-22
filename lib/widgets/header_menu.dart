@@ -108,6 +108,10 @@ class HeaderMenu extends StatelessWidget {
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shadowColor: Colors.black.withValues(alpha: 0.2),
+        elevation: 10,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: const [

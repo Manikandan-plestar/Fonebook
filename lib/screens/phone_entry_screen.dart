@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_client.dart';
 import '../services/dial_codes.dart';
 import '../widgets/app_header.dart';
@@ -112,7 +113,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
                   children: [
                     const SizedBox(height: 50),
                     const Text(
-                      'Add Business Contact',
+                      'Business Contact',
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF232323), fontFamily: 'Poppins'),
                     ),
                     const SizedBox(height: 15),
@@ -155,7 +156,8 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
                             children: [
                               TextField(
                                 controller: _phoneController,
-                                keyboardType: TextInputType.phone,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                 maxLength: 10,
                                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Poppins'),
                                 decoration: InputDecoration(

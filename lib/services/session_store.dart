@@ -111,4 +111,47 @@ class SessionStore extends ChangeNotifier {
   bool isFavourite(String phone, List<DirectoryContact> favourites) {
     return favourites.any((e) => e.phone == phone);
   }
+
+  // Category Storage & Management
+  Future<List<String>> getCategories() async {
+    final p = await _prefs;
+    final custom = p.getStringList('custom_categories') ?? [];
+    final defaults = ['Family', 'Friends', 'Office'];
+    final list = <String>[...defaults];
+    for (final c in custom) {
+      if (!list.any((e) => e.toLowerCase() == c.toLowerCase())) {
+        list.add(c);
+      }
+    }
+    return list;
+  }
+
+  Future<void> addCategory(String cat) async {
+    final trimmed = cat.trim();
+    if (trimmed.isEmpty) return;
+    final p = await _prefs;
+    final custom = p.getStringList('custom_categories') ?? [];
+    if (!custom.any((e) => e.toLowerCase() == trimmed.toLowerCase())) {
+      custom.add(trimmed);
+      await p.setStringList('custom_categories', custom);
+      notifyListeners();
+    }
+  }
+
+  Future<void> setContactCategory(String phone, String category) async {
+    final p = await _prefs;
+    final map = (jsonDecode(p.getString('contact_categories_map') ?? '{}') as Map).cast<String, dynamic>();
+    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPhone.isNotEmpty) {
+      map[cleanPhone] = category;
+      await p.setString('contact_categories_map', jsonEncode(map));
+      notifyListeners();
+    }
+  }
+
+  Future<Map<String, String>> getAllContactCategories() async {
+    final p = await _prefs;
+    final raw = (jsonDecode(p.getString('contact_categories_map') ?? '{}') as Map).cast<String, dynamic>();
+    return raw.map((k, v) => MapEntry(k, v.toString()));
+  }
 }

@@ -1026,6 +1026,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return ContactCard(
                     contact: contact,
                     isFavourite: isFav,
+                    showFavouriteIcon: false,
                     isMyContact: isMyContact,
                     isSponsored: isSponsored,
                     isFirstThree: i < 3,
@@ -1035,12 +1036,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       _loadFavs();
                     },
                     onTap: () {
-                      // DetailsScreen navigation temporarily disabled. Uncomment below to re-enable later:
-                      // widget.onSearchModeChanged(false);
-                      // Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
-                      //   _loadFavs();
-                      //   if (_isSearching) widget.onSearchModeChanged(true);
-                      // });
+                      widget.onSearchModeChanged(false);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
+                        _loadFavs();
+                        if (_isSearching) widget.onSearchModeChanged(true);
+                      });
                     },
                   );
                 },

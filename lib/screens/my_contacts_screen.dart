@@ -16,6 +16,7 @@ class MyContactItem {
   final String name;
   final String title;
   final String phone;
+  final String category;
 
   MyContactItem({
     this.id,
@@ -23,15 +24,21 @@ class MyContactItem {
     required this.name,
     required this.title,
     required this.phone,
+    this.category = 'Family',
   });
 
-  factory MyContactItem.fromJson(Map<String, dynamic> json) {
+  factory MyContactItem.fromJson(Map<String, dynamic> json, [String? savedCategory]) {
+    String cat = json['category']?.toString() ?? '';
+    if (cat.isEmpty || cat == 'null' || cat == 'Others') {
+      cat = (savedCategory != null && savedCategory.isNotEmpty && savedCategory != 'Others') ? savedCategory : 'Family';
+    }
     return MyContactItem(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? ''),
       ownerEmail: json['owner_email']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',
+      category: cat,
     );
   }
 }
@@ -55,6 +62,192 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
   bool _loading = true;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  List<String> _categories = ['All', 'Family', 'Friends', 'Office'];
+  String _selectedCategory = 'All';
+
+  bool _isSelectionMode = false;
+  final Set<String> _selectedPhones = {};
+
+  Future<void> _handleAssignCategorySelection() async {
+    final availableCategories = List<String>.from(_categories.where((c) => c != 'All'));
+    
+    final selectedCat = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _selectedCategory == 'All' ? 'Assign Category' : 'Move Category',
+          style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        children: [
+          ...availableCategories.map((c) => SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, c),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(c, style: const TextStyle(fontFamily: 'Poppins', fontSize: 14)),
+            ),
+          )),
+          const Divider(),
+          SimpleDialogOption(
+            onPressed: () async {
+              Navigator.pop(ctx, '__ADD_CUSTOM__');
+            },
+            child: Row(
+              children: const [
+                Icon(Icons.add, color: Color(0xFF6C757D), size: 20),
+                SizedBox(width: 8),
+                Text('+ Add Custom Category...', style: TextStyle(fontFamily: 'Poppins', fontSize: 14, color: Color(0xFF6C757D), fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedCat == null) return;
+
+    String finalCategory = selectedCat;
+    if (selectedCat == '__ADD_CUSTOM__') {
+      final custom = await _showAddCustomCategoryDialog(context);
+      if (custom == null || custom.trim().isEmpty) return;
+      finalCategory = custom.trim();
+      await SessionStore().addCategory(finalCategory);
+    }
+
+    final store = SessionStore();
+    final count = _selectedPhones.length;
+    for (final phone in _selectedPhones) {
+      await store.setContactCategory(phone, finalCategory);
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Assigned $count contact(s) to $finalCategory'),
+        backgroundColor: const Color(0xFF4C5B8F),
+      ),
+    );
+
+    setState(() {
+      _isSelectionMode = false;
+      _selectedPhones.clear();
+    });
+    _load();
+  }
+
+  Future<void> _handleDeleteSelection() async {
+    final count = _selectedPhones.length;
+    final isAllTab = _selectedCategory == 'All';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(isAllTab ? 'Delete Contacts' : 'Remove from $_selectedCategory'),
+        content: Text(
+          isAllTab
+              ? 'Are you sure you want to delete $count selected contact(s) from your list?'
+              : 'Are you sure you want to remove $count contact(s) from $_selectedCategory? (They will remain in your main contact list)',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(isAllTab ? 'Delete' : 'Remove', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (isAllTab) {
+      final email = await _getEffectiveEmail();
+      final itemsToDelete = _contacts.where((c) => _selectedPhones.contains(c.phone)).toList();
+      for (final item in itemsToDelete) {
+        try {
+          await widget.api.post('delete_my_contact', {
+            'id': item.id?.toString() ?? '',
+            'email': email,
+            'owner_email': email,
+          });
+        } catch (e) {
+          debugPrint("Error deleting selected contact: $e");
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Deleted $count contact(s)'), backgroundColor: Colors.red),
+      );
+    } else {
+      final store = SessionStore();
+      for (final phone in _selectedPhones) {
+        await store.setContactCategory(phone, '');
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Removed $count contact(s) from $_selectedCategory')),
+      );
+    }
+
+    setState(() {
+      _isSelectionMode = false;
+      _selectedPhones.clear();
+    });
+    _load();
+  }
+
+  Future<String?> _showAddCustomCategoryDialog(BuildContext context) async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Add Custom Category', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'e.g. Gym, College, VIP',
+            hintStyle: const TextStyle(fontFamily: 'Poppins', fontSize: 14, color: Colors.grey),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontFamily: 'Poppins')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6C757D),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              final val = ctrl.text.trim();
+              if (val.isNotEmpty) {
+                Navigator.pop(ctx, val);
+              }
+            },
+            child: const Text('Add', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<String> _getEffectiveEmail() async {
     final currentSession = await SessionStore().read();
@@ -109,17 +302,24 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
   }
 
   List<MyContactItem> get _filteredContacts {
+    var list = _contacts;
+
+    if (_selectedCategory != 'All') {
+      list = list.where((c) => c.category.toLowerCase() == _selectedCategory.toLowerCase()).toList();
+    }
+
     final query = _searchQuery.trim().toLowerCase();
-    if (query.isEmpty) return _contacts;
+    if (query.isEmpty) return list;
     final digitsQuery = query.replaceAll(RegExp(r'[^0-9]'), '');
 
-    return _contacts.where((c) {
+    return list.where((c) {
       final nameMatch = c.name.toLowerCase().contains(query);
       final titleMatch = c.title.toLowerCase().contains(query);
       final phoneMatch = c.phone.toLowerCase().contains(query);
+      final categoryMatch = c.category.toLowerCase().contains(query);
       final phoneDigitsMatch = digitsQuery.isNotEmpty &&
           c.phone.replaceAll(RegExp(r'[^0-9]'), '').contains(digitsQuery);
-      return nameMatch || titleMatch || phoneMatch || phoneDigitsMatch;
+      return nameMatch || titleMatch || phoneMatch || categoryMatch || phoneDigitsMatch;
     }).toList();
   }
 
@@ -128,10 +328,18 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     setState(() => _loading = true);
     try {
       final email = await _getEffectiveEmail();
+      final catList = await SessionStore().getCategories();
+      final catMap = await SessionStore().getAllContactCategories();
+
       final res = await widget.api.post('get_my_contacts', {'email': email, 'owner_email': email});
       if (!mounted) return;
       if (res is List) {
-        final parsed = res.map((e) => MyContactItem.fromJson(Map<String, dynamic>.from(e))).toList();
+        final parsed = res.map((e) {
+          final m = Map<String, dynamic>.from(e);
+          final phone = m['phone']?.toString() ?? '';
+          final cleanP = phone.replaceAll(RegExp(r'[^0-9]'), '');
+          return MyContactItem.fromJson(m, catMap[cleanP]);
+        }).toList();
         
         // Sorting A-Z
         parsed.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -164,10 +372,14 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         }
         setState(() {
           _contacts = unique;
+          _categories = ['All', ...catList];
           _loading = false;
         });
       } else {
-        setState(() => _loading = false);
+        setState(() {
+          _categories = ['All', ...catList];
+          _loading = false;
+        });
       }
     } catch (e) {
       debugPrint("Error loading my_contacts: $e");
@@ -185,6 +397,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         return StatefulBuilder(
           builder: (context, setPickerState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              elevation: 10,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: const Text('Select Country Code', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
               content: SizedBox(
@@ -304,6 +520,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     final formKey = GlobalKey<FormState>();
     Map<String, String> selectedCountry = dialCodes.firstWhere((e) => e['dial_code'] == '+91', orElse: () => dialCodes.first);
     String? phoneError;
+    List<String> availableCategories = List.from(_categories.where((c) => c != 'All'));
+    String selectedCategory = availableCategories.isNotEmpty ? availableCategories.first : 'Family';
 
     showDialog(
       context: context,
@@ -313,6 +531,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
           builder: (context, setDialogState) {
             final targetLength = _getCountryPhoneLength(selectedCountry);
             return AlertDialog(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              elevation: 10,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -348,7 +570,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                       TextFormField(
                         controller: titleCtrl,
                         decoration: InputDecoration(
-                          labelText: 'Title / Designation',
+                          labelText: 'Profession',
                           hintText: 'e.g. Doctor, Manager, Engineer',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
@@ -433,6 +655,50 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      // Category Field
+                      DropdownButtonFormField<String>(
+                        value: availableCategories.contains(selectedCategory) ? selectedCategory : (availableCategories.isNotEmpty ? availableCategories.first : 'Family'),
+                        decoration: InputDecoration(
+                          labelText: 'Category',
+                          hintText: 'Select category',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        ),
+                        items: [
+                          ...availableCategories.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontFamily: 'Poppins', fontSize: 14)))),
+                          const DropdownMenuItem(
+                            value: '__ADD_NEW__',
+                            child: Row(
+                              children: [
+                                Icon(Icons.add, size: 18, color: Color(0xFF6C757D)),
+                                SizedBox(width: 6),
+                                Text('Add Custom Category...', style: TextStyle(fontFamily: 'Poppins', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF6C757D))),
+                              ],
+                            ),
+                          ),
+                        ],
+                        onChanged: (val) async {
+                          if (val == '__ADD_NEW__') {
+                            final newCat = await _showAddCustomCategoryDialog(context);
+                            if (newCat != null && newCat.isNotEmpty) {
+                              await SessionStore().addCategory(newCat);
+                              final updatedList = await SessionStore().getCategories();
+                              setDialogState(() {
+                                availableCategories = List.from(updatedList);
+                                selectedCategory = newCat;
+                              });
+                              setState(() {
+                                _categories = ['All', ...updatedList];
+                              });
+                            }
+                          } else if (val != null) {
+                            setDialogState(() {
+                              selectedCategory = val;
+                            });
+                          }
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -458,12 +724,15 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                               final fullPhone = '${selectedCountry['dial_code']} ${phoneCtrl.text.trim()}';
                               final nav = Navigator.of(ctx);
                               final messenger = ScaffoldMessenger.of(context);
+                              await SessionStore().setContactCategory(fullPhone, selectedCategory);
+                              await SessionStore().addCategory(selectedCategory);
                               await widget.api.post('save_my_contact', {
                                 'email': email,
                                 'owner_email': email,
                                 'name': nameCtrl.text.trim(),
                                 'title': titleCtrl.text.trim(),
                                 'phone': fullPhone,
+                                'category': selectedCategory,
                               });
                               if (mounted) {
                                 nav.pop();
@@ -532,6 +801,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     final phoneCtrl = TextEditingController(text: numberPart);
     final formKey = GlobalKey<FormState>();
     String? phoneError;
+    List<String> availableCategories = List.from(_categories.where((c) => c != 'All'));
+    String selectedCategory = (item.category.isNotEmpty && item.category != 'Others') ? item.category : (availableCategories.isNotEmpty ? availableCategories.first : 'Family');
 
     showDialog(
       context: context,
@@ -541,6 +812,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
           builder: (context, setDialogState) {
             final targetLength = _getCountryPhoneLength(selectedCountry);
             return AlertDialog(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              elevation: 10,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -575,7 +850,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                       TextFormField(
                         controller: titleCtrl,
                         decoration: InputDecoration(
-                          labelText: 'Title / Designation',
+                          labelText: 'Profession',
                           hintText: 'e.g. Doctor, Manager, Engineer',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
@@ -661,6 +936,50 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      // Category Field
+                      DropdownButtonFormField<String>(
+                        value: availableCategories.contains(selectedCategory) ? selectedCategory : (availableCategories.isNotEmpty ? availableCategories.first : 'Family'),
+                        decoration: InputDecoration(
+                          labelText: 'Category',
+                          hintText: 'Select category',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        ),
+                        items: [
+                          ...availableCategories.map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontFamily: 'Poppins', fontSize: 14)))),
+                          const DropdownMenuItem(
+                            value: '__ADD_NEW__',
+                            child: Row(
+                              children: [
+                                Icon(Icons.add, size: 18, color: Color(0xFF6C757D)),
+                                SizedBox(width: 6),
+                                Text('Add Custom Category...', style: TextStyle(fontFamily: 'Poppins', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF6C757D))),
+                              ],
+                            ),
+                          ),
+                        ],
+                        onChanged: (val) async {
+                          if (val == '__ADD_NEW__') {
+                            final newCat = await _showAddCustomCategoryDialog(context);
+                            if (newCat != null && newCat.isNotEmpty) {
+                              await SessionStore().addCategory(newCat);
+                              final updatedList = await SessionStore().getCategories();
+                              setDialogState(() {
+                                availableCategories = List.from(updatedList);
+                                selectedCategory = newCat;
+                              });
+                              setState(() {
+                                _categories = ['All', ...updatedList];
+                              });
+                            }
+                          } else if (val != null) {
+                            setDialogState(() {
+                              selectedCategory = val;
+                            });
+                          }
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -686,6 +1005,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                               final fullPhone = '${selectedCountry['dial_code']} ${phoneCtrl.text.trim()}';
                               final nav = Navigator.of(ctx);
                               final messenger = ScaffoldMessenger.of(context);
+                              await SessionStore().setContactCategory(fullPhone, selectedCategory);
+                              await SessionStore().addCategory(selectedCategory);
                               await widget.api.post('update_my_contact', {
                                 'id': item.id?.toString() ?? '',
                                 'email': email,
@@ -693,6 +1014,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                 'name': nameCtrl.text.trim(),
                                 'title': titleCtrl.text.trim(),
                                 'phone': fullPhone,
+                                'category': selectedCategory,
                               });
                               if (mounted) {
                                 nav.pop();
@@ -1234,31 +1556,129 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
               session: widget.session,
               store: SessionStore(),
             ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'My Contacts',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
+            if (_isSelectionMode)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4C5B8F),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  Row(
+                  child: Row(
                     children: [
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: _showAddDialog,
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Text(
-                          '+ Add',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () {
+                          setState(() {
+                            _isSelectionMode = false;
+                            _selectedPhones.clear();
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_selectedPhones.length} selected',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Poppins'),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: Icon(
+                          _selectedPhones.length == _filteredContacts.length ? Icons.select_all : Icons.deselect,
+                          color: Colors.white,
                         ),
+                        tooltip: 'Select All',
+                        onPressed: () {
+                          setState(() {
+                            if (_selectedPhones.length == _filteredContacts.length) {
+                              _selectedPhones.clear();
+                              _isSelectionMode = false;
+                            } else {
+                              _selectedPhones.addAll(_filteredContacts.map((c) => c.phone));
+                            }
+                          });
+                        },
+                      ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.white),
+                        onSelected: (v) {
+                          if (v == 'category') {
+                            _handleAssignCategorySelection();
+                          } else if (v == 'delete') {
+                            _handleDeleteSelection();
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          PopupMenuItem(
+                            value: 'category',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.category_outlined, color: Color(0xFF495057), size: 20),
+                                const SizedBox(width: 10),
+                                Text(
+                                  _selectedCategory == 'All' ? 'Assign Category' : 'Move Category',
+                                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                const SizedBox(width: 10),
+                                Text(
+                                  _selectedCategory == 'All' ? 'Delete Contacts' : 'Remove from $_selectedCategory',
+                                  style: const TextStyle(fontFamily: 'Poppins', fontSize: 14, color: Colors.red),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'My Contacts',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          '${_filteredContacts.length} contacts',
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(width: 12),
+                        InkWell(
+                          onTap: _showAddDialog,
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE9ECEF),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: const Color(0xFFCED4DA)),
+                            ),
+                            child: const Text(
+                              '+ Add',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Container(
@@ -1301,6 +1721,48 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                 ),
               ),
             ),
+            // Category Filter Tabs
+            if (_categories.isNotEmpty)
+              Container(
+                height: 38,
+                margin: const EdgeInsets.only(top: 4, bottom: 4),
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _categories.length,
+                  separatorBuilder: (context, index) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final cat = _categories[index];
+                    final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
+                    return ChoiceChip(
+                      showCheckmark: false,
+                      label: Text(
+                        cat,
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 12.5,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? Colors.white : const Color(0xFF495057),
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: const Color(0xFF4C5B8F),
+                      backgroundColor: Colors.white,
+                      side: BorderSide(
+                        color: isSelected ? const Color(0xFF4C5B8F) : const Color(0xFFE9ECEF),
+                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      onSelected: (val) {
+                        if (val) {
+                          setState(() {
+                            _selectedCategory = cat;
+                          });
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFFD7B41A)))
@@ -1368,14 +1830,44 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
   }
 
   Widget _buildItem(MyContactItem item) {
+    final isSelected = _selectedPhones.contains(item.phone);
+
     return InkWell(
-      onTap: () => _showEditDialog(item),
+      onTap: () {
+        if (_isSelectionMode) {
+          setState(() {
+            if (isSelected) {
+              _selectedPhones.remove(item.phone);
+              if (_selectedPhones.isEmpty) _isSelectionMode = false;
+            } else {
+              _selectedPhones.add(item.phone);
+            }
+          });
+        } else {
+          _showEditDialog(item);
+        }
+      },
+      onLongPress: () {
+        setState(() {
+          _isSelectionMode = true;
+          if (isSelected) {
+            _selectedPhones.remove(item.phone);
+            if (_selectedPhones.isEmpty) _isSelectionMode = false;
+          } else {
+            _selectedPhones.add(item.phone);
+          }
+        });
+      },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isSelected ? const Color(0xFFF0F4FF) : Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF4C5B8F) : const Color(0xFFE9ECEF),
+            width: isSelected ? 1.5 : 1.0,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -1438,14 +1930,24 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
               ),
             ),
             const SizedBox(width: 6),
-            InkWell(
-              onTap: () => _callPhone(item.phone),
-              borderRadius: BorderRadius.circular(20),
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(Icons.phone, color: Colors.black, size: 22),
+            if (_isSelectionMode)
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: isSelected ? const Color(0xFF4C5B8F) : Colors.grey.shade400,
+                  size: 24,
+                ),
+              )
+            else
+              InkWell(
+                onTap: () => _callPhone(item.phone),
+                borderRadius: BorderRadius.circular(20),
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.phone, color: Colors.black, size: 22),
+                ),
               ),
-            ),
           ],
         ),
       ),

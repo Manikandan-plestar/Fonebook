@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/contact.dart';
 import '../services/api_client.dart';
 import '../services/session_store.dart';
@@ -26,7 +27,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _favCount = int.tryParse(widget.contact.favouriteCount) ?? 0;
     _load();
   }
@@ -60,7 +61,10 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
 
   void _call(String phone) {
     _store.addToHistory(_fullContact ?? widget.contact);
-    launchUrl(Uri.parse('tel:$phone'));
+    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (cleanPhone.isNotEmpty) {
+      launchUrl(Uri.parse('tel:$cleanPhone'));
+    }
   }
 
   void _showAddReviewSheet() {
@@ -69,10 +73,10 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AddReviewBottomSheet(
-        contactPhone: (widget.contact.phone),
+        contactPhone: widget.contact.phone,
         reviewerName: _session?.email?.split('@')[0] ?? 'Guest',
         reviewerPhone: _session?.phone ?? '',
-        onSuccess: _load, // Refresh data after post
+        onSuccess: _load,
       ),
     );
   }
@@ -119,7 +123,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
     final show = c.showContact.toLowerCase();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
         child: Column(
           children: [
@@ -136,28 +140,127 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
               Expanded(
                 child: Column(
                   children: [
-                    // Hero Image
-                    GestureDetector(
-                      onTap: _showFullImage,
-                      child: Container(
-                        width: double.infinity,
-                        height: 250,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                        ),
-                        child: c.imageUrl.isNotEmpty
-                            ? FadeInImage.assetNetwork(
-                                placeholder: 'assets/images/user.png',
-                                image: c.imageUrl,
-                                fit: BoxFit.cover,
-                                imageErrorBuilder: (c, e, s) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
-                              )
-                            : Image.asset('assets/images/user.png', fit: BoxFit.cover),
+                    // Top Header Profile Card (Shows ONLY Name & Avatar & Favourite Star)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Avatar Image
+                          GestureDetector(
+                            onTap: _showFullImage,
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFF4C5B8F),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.1),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: c.imageUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: c.imageUrl,
+                                        fit: BoxFit.cover,
+                                        placeholder: (context, url) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
+                                        errorWidget: (context, url, error) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
+                                      )
+                                    : Image.asset('assets/images/user.png', fit: BoxFit.cover),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+
+                          // ONLY Name
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    c.name,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF212529),
+                                      fontFamily: 'Poppins',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (c.verified == 1)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 6),
+                                    child: Image.asset('assets/images/verified.png', width: 18, height: 18),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          // Top Right Favourite Star Icon
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: () async {
+                                  final String action = _isFav ? 'remove' : 'add';
+                                  setState(() {
+                                    _isFav = !_isFav;
+                                    if (_isFav) { _favCount++; } else { if (_favCount > 0) _favCount--; }
+                                  });
+                                  try {
+                                    await _store.toggleFavourite(c);
+                                    await ApiClient().post('addfavourite', {
+                                      'phone_no': c.phone,
+                                      'count': action == 'add' ? "1" : "0",
+                                    });
+                                  } catch (e) {
+                                    debugPrint("Favorite Sync Error: $e");
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(20),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Icon(
+                                    _isFav ? Icons.star : Icons.star_border,
+                                    color: _isFav ? const Color(0xFFF6D207) : Colors.grey.shade500,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                _favCount.toString(),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Poppins',
+                                  color: Color(0xFF212529),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
 
-                    // Tab Bar
+                    // Tab Bar (About & Reviews)
                     Container(
                       color: Colors.white,
                       child: TabBar(
@@ -169,22 +272,18 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                         labelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
                         tabs: const [
                           Tab(text: 'About'),
-                          Tab(text: 'Services'),
                           Tab(text: 'Reviews'),
-                          Tab(text: 'Location'),
                         ],
                       ),
                     ),
 
-                    // Tab Bar View
+                    // Tab Views
                     Expanded(
                       child: TabBarView(
                         controller: _tabController,
                         children: [
                           _buildAboutTab(c, show),
-                          _buildServicesTab(c),
                           _buildReviewsTab(c),
-                          _buildLocationTab(c, show),
                         ],
                       ),
                     ),
@@ -198,235 +297,273 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
   }
 
   Widget _buildAboutTab(DirectoryContact c, String show) {
-    final bool hasAbout = c.about != null && c.about!.isNotEmpty && c.about != 'null';
+    final List<String> allSkills = [];
+    if (c.additionalServices != null && c.additionalServices!.isNotEmpty && c.additionalServices != 'null') {
+      for (var s in c.additionalServices!.split(',')) {
+        final t = s.trim();
+        if (t.isNotEmpty && !allSkills.any((e) => e.toLowerCase() == t.toLowerCase())) {
+          allSkills.add(t);
+        }
+      }
+    }
+    if (c.keyword != null && c.keyword!.isNotEmpty && c.keyword != 'null') {
+      for (var k in c.keyword!.split(',')) {
+        final t = k.trim();
+        if (t.isNotEmpty && !allSkills.any((e) => e.toLowerCase() == t.toLowerCase())) {
+          allSkills.add(t);
+        }
+      }
+    }
+    final bool hasLocation = c.location1 != null && c.location1!.trim().isNotEmpty;
+    final bool hasPhone = c.phone.isNotEmpty;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Action Icons Row
+          // 1. Profession Card (Label & Value)
+          if (c.service.isNotEmpty) ...[
+            _buildDetailCard(
+              title: 'Profession',
+              child: Text(
+                c.service,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF212529),
+                  fontFamily: 'Poppins',
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // 2. About / Bio Card
+          if (c.about != null && c.about!.trim().isNotEmpty && c.about != 'null') ...[
+            _buildDetailCard(
+              title: 'Bio',
+              child: Text(
+                c.about!.trim(),
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF212529),
+                  fontFamily: 'Poppins',
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // 2. Skills Card (Clean Chips Only)
+          if (allSkills.isNotEmpty) ...[
+            _buildDetailCard(
+              title: 'Skills',
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: allSkills.map((skill) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F3F5),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE9ECEF)),
+                  ),
+                  child: Text(
+                    skill,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontFamily: 'Poppins',
+                      color: Color(0xFF343A40),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                )).toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // 3. Contact Number Card
+          if (hasPhone) ...[
+            _buildDetailCard(
+              title: 'Contact Number',
+              child: Row(
+                children: [
+                  const Icon(Icons.phone_outlined, size: 18, color: Color(0xFF495057)),
+                  const SizedBox(width: 10),
+                  Text(
+                    c.phone,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF212529),
+                      fontFamily: 'Poppins',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // 4. Address / Location Card
+          if (hasLocation) ...[
+            _buildDetailCard(
+              title: 'Address',
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFF495057)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      c.location1!,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF212529),
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // 5. Action Buttons Bar (WhatsApp & Call)
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _DetailAction(
-                  icon: 'assets/images/gmail.png', 
-                  onTap: () {
-                    if (show.contains('e') && c.email != null && c.email!.isNotEmpty && c.email != 'null') {
-                      launchUrl(Uri.parse('mailto:${c.email}'));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email is off')));
-                    }
-                  },
-                ),
-                _DetailAction(
-                  icon: 'assets/images/skype.png', 
-                  onTap: () {
-                    if (show.contains('s') && c.skype != null && c.skype!.isNotEmpty && c.skype != 'null') {
-                      launchUrl(Uri.parse('skype:${c.skype}?call'));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Skype is off')));
-                    }
-                  },
-                ),
-                _DetailAction(
-                  icon: 'assets/images/whatsapp.png', 
-                  onTap: () {
-                    if (show.contains('w')) {
-                      launchUrl(Uri.parse('https://wa.me/${c.phone}'));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Whatsapp is off')));
-                    }
-                  },
-                ),
-                _DetailAction(
-                  icon: 'assets/images/phone.png', 
-                  width: 28,
-                  onTap: () {
-                    if (show.contains('m')) {
-                      _call(c.phone);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone is off')));
-                    }
-                  },
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _DetailAction(
-                      icon: _isFav ? 'assets/images/favourite1.png' : 'assets/images/star.png',
-                      width: 28,
-                      rightMargin: 0,
-                      onTap: () async {
-                        final String action = _isFav ? 'remove' : 'add';
-                        setState(() {
-                          _isFav = !_isFav;
-                          if (_isFav) { _favCount++; } else { if (_favCount > 0) _favCount--; }
-                        });
-                        try {
-                          await _store.toggleFavourite(c);
-                          await ApiClient().post('addfavourite', {
-                            'phone_no': c.phone,
-                            'count': action == 'add' ? "1" : "0",
-                          });
-                        } catch (e) { debugPrint("Favorite Sync Error: $e"); }
-                      },
+                // WhatsApp Button (Direct launch)
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      final wpNum = (c.whatsapp != null && c.whatsapp!.isNotEmpty && c.whatsapp != 'null')
+                          ? c.whatsapp!
+                          : c.phone;
+                      final cleanPhone = wpNum.replaceAll(RegExp(r'[^0-9+]'), '');
+                      if (cleanPhone.isNotEmpty) {
+                        launchUrl(Uri.parse('https://wa.me/$cleanPhone'));
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WhatsApp number not available')));
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset('assets/images/whatsapp.png', width: 26, height: 26),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'WhatsApp',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                              color: Color(0xFF212529),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    Text(_favCount.toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                  ],
+                  ),
+                ),
+
+                Container(height: 28, width: 1, color: Colors.grey.shade300),
+
+                // Call Button (Direct launch)
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      final cleanPhone = c.phone.replaceAll(RegExp(r'[^0-9+]'), '');
+                      if (cleanPhone.isNotEmpty) {
+                        _call(c.phone);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.phone, color: Colors.black, size: 24),
+                          SizedBox(width: 8),
+                          Text(
+                            'Call',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                              color: Color(0xFF212529),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          /*const SizedBox(height: 25),
 
-          // Details List
-          _buildInfoSection('Profile Details', [
-            _InfoItem(label: 'Phone', value: show.contains('m') ? (c.phone.length > 6 ? "${c.phone.substring(0, c.phone.length - 6)}XXXXXX" : c.phone) : 'Hidden', onTap: () {
-              if (show.contains('m')) _call(c.phone);
-              else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone is off')));
-            }),
-          ]),*/
-
-          if (hasAbout) ...[
-            const SizedBox(height: 25),
-            const Padding(
-              padding: EdgeInsets.only(left: 5, bottom: 10),
-              child: Text('About Bio', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey, fontFamily: 'Poppins')),
-            ),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
-              ),
-              child: Text(
-                c.about!,
-                style: const TextStyle(fontSize: 15, color: Color(0xFF272000), fontFamily: 'Poppins', height: 1.5),
-              ),
-            ),
-          ],
-          
-          if (c.additionalPhones != null && c.additionalPhones!.isNotEmpty && c.additionalPhones != 'null') ...[
-             const SizedBox(height: 25),
-             _buildInfoSection('Additional Contacts', 
-               c.additionalPhones!.split(', ').where((s) => s.contains(':')).map((s) {
-                final parts = s.split(':');
-                final label = parts[0].trim();
-                final value = parts[1].trim();
-                final bool isEmail = value.contains('@');
-                return _InfoItem(
-                  label: label, 
-                  value: !isEmail ? (value.length > 6 ? "${value.substring(0, value.length - 6)}XXXXXX" : value) : value,
-                  onTap: () {
-                    if (isEmail) {
-                      if (show.contains('e')) launchUrl(Uri.parse('mailto:$value'));
-                      else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email is off')));
-                    } else {
-                      if (show.contains('m')) _call(value);
-                      else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone is off')));
-                    }
-                  },
-                );
-              }).toList()
-             ),
-          ],
+          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _buildServicesTab(DirectoryContact c) {
-    final bool hasServices = c.additionalServices != null && c.additionalServices!.isNotEmpty && c.additionalServices != 'null';
-    final bool hasKeywords = c.keyword != null && c.keyword!.isNotEmpty && c.keyword != 'null';
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (hasServices) ...[
-            const Padding(
-              padding: EdgeInsets.only(left: 5, bottom: 10),
-              child: Text('Skills & Services', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey, fontFamily: 'Poppins')),
+  Widget _buildDetailCard({required String title, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF6C757D),
+              fontFamily: 'Poppins',
             ),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
-              child: Column(
-                children: c.additionalServices!.split(',').map((service) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.check_circle, size: 18, color: Color(0xFFD7B41A)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            service.trim(),
-                            style: const TextStyle(fontSize: 15, color: Color(0xFF272000), fontFamily: 'Poppins', height: 1.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-
-          if (hasKeywords) ...[
-            const SizedBox(height: 25),
-            const Padding(
-              padding: EdgeInsets.only(left: 5, bottom: 10),
-              child: Text('Keywords', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey, fontFamily: 'Poppins')),
-            ),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
-              ),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: c.keyword!.split(',').map((k) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Text(k.trim(), style: const TextStyle(fontSize: 13, fontFamily: 'Poppins', color: Color(0xFF272000))),
-                )).toList(),
-              ),
-            ),
-          ],
-          
-          if (!hasServices && !hasKeywords)
-            const Center(child: Padding(
-              padding: EdgeInsets.only(top: 50),
-              child: Text('No Skills or Services listed', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-            )),
-        ],
-      ),
+            ],
+          ),
+          child: child,
+        ),
+      ],
     );
   }
 
@@ -438,21 +575,24 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('User Reviews', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+              const Text(
+                'User Reviews',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Color(0xFF212529)),
+              ),
               ElevatedButton.icon(
                 onPressed: _showAddReviewSheet,
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add Review', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFD7B41A),
-                  foregroundColor: Colors.black,
+                  foregroundColor: const Color(0xFF272000),
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Expanded(
             child: (c.reviews == null || c.reviews!.isEmpty)
                 ? const Center(
@@ -463,7 +603,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                   )
                 : ListView.separated(
                     itemCount: c.reviews!.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 15),
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final rev = c.reviews![index];
                       final reviewerName = rev['reviewer_name']?.toString() ?? 'User';
@@ -475,33 +615,38 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3))],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                const CircleAvatar(backgroundColor: Color(0xFFD7B41A), child: Icon(Icons.person, color: Colors.white)),
+                                const CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Color(0xFFD7B41A),
+                                  child: Icon(Icons.person, color: Colors.white, size: 20),
+                                ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                                      Text(date, style: const TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'Poppins')),
+                                      Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Color(0xFF212529))),
+                                      if (date.isNotEmpty)
+                                        Text(date, style: const TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'Poppins')),
                                     ],
                                   ),
                                 ),
                                 Row(
-                                  children: List.generate(
-                                      5,
-                                      (i) => Icon(
-                                            Icons.star,
-                                            color: i < rating ? const Color(0xFFD7B41A) : Colors.grey[300],
-                                            size: 16,
-                                          )),
+                                  children: List.generate(5, (starIdx) {
+                                    return Icon(
+                                      starIdx < rating ? Icons.star : Icons.star_border,
+                                      color: const Color(0xFFF6D207),
+                                      size: 16,
+                                    );
+                                  }),
                                 ),
                               ],
                             ),
@@ -509,7 +654,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                               const SizedBox(height: 10),
                               Text(
                                 comment,
-                                style: const TextStyle(fontFamily: 'Poppins', color: Colors.black87),
+                                style: const TextStyle(fontFamily: 'Poppins', fontSize: 13.5, color: Color(0xFF495057), height: 1.4),
                               ),
                             ],
                           ],
@@ -519,157 +664,6 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                   ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildLocationTab(DirectoryContact c, String show) {
-    final address = show.contains('f') ? c.location : c.location1;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(25),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Full Location', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-          const SizedBox(height: 20),
-          InkWell(
-            onTap: () {
-              if (address != null) {
-                launchUrl(Uri.parse('https://www.google.com/maps/search/?api=1\u0026query=${Uri.encodeComponent(address)}'));
-              }
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 8))],
-                border: Border.all(color: const Color(0xFFD7B41A).withOpacity(0.2), width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.location_on, color: Color(0xFFD7B41A), size: 30),
-                      SizedBox(width: 10),
-                      Text('Click to view on Map', style: TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'Poppins')),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  Text(
-                    address ?? 'No address provided',
-                    style: const TextStyle(fontSize: 18, fontFamily: 'Poppins', height: 1.5, color: Color(0xFF272000)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoSection(String title, List<_InfoItem> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 5, bottom: 10),
-          child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey, fontFamily: 'Poppins')),
-        ),
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
-          ),
-          child: Column(
-            children: items.asMap().entries.map((e) {
-              final bool isLast = e.key == items.length - 1;
-              return Column(
-                children: [
-                  _buildDetailRow(e.value),
-                  if (!isLast) const Divider(height: 1, color: Color(0xFFF0F0F0), indent: 20, endIndent: 20),
-                ],
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailRow(_InfoItem item) {
-    final bool hideLabel = item.label.isEmpty;
-    return InkWell(
-      onTap: item.onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        child: Row(
-          crossAxisAlignment: item.isLongText ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-          children: [
-            if (!hideLabel)
-              SizedBox(
-                width: 100,
-                child: Text(item.label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF5A5A5A), fontFamily: 'Poppins')),
-              ),
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      item.value ?? '-',
-                      style: TextStyle(
-                        fontSize: 16, 
-                        color: const Color(0xFF272000), 
-                        fontFamily: 'Poppins', 
-                        fontWeight: hideLabel ? FontWeight.normal : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  if (item.isVerified)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Image.asset('assets/images/verified.png', width: 18, height: 18),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoItem {
-  final String label;
-  final String? value;
-  final bool isVerified;
-  final bool isLongText;
-  final VoidCallback? onTap;
-  _InfoItem({required this.label, this.value, this.isVerified = false, this.isLongText = false, this.onTap});
-}
-
-class _DetailAction extends StatelessWidget {
-  final String icon;
-  final VoidCallback onTap;
-  final double width;
-  final double height;
-  final double rightMargin;
-  const _DetailAction({required this.icon, required this.onTap, this.width = 25, this.height = 30, this.rightMargin = 15});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(right: rightMargin),
-      child: InkWell(
-        onTap: onTap,
-        child: Image.asset(icon, width: width, height: height),
       ),
     );
   }
@@ -693,22 +687,59 @@ class _AddReviewBottomSheet extends StatefulWidget {
 }
 
 class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
-  int _rating = 0;
+  int _rating = 5;
   final _commentController = TextEditingController();
-  bool _isPosting = false;
+  bool _isSubmitting = false;
+
+  Future<void> _submitReview() async {
+    final comment = _commentController.text.trim();
+    if (comment.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a review comment')));
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      final res = await ApiClient().post('save_review', {
+        'contact_phone': widget.contactPhone,
+        'reviewer_name': widget.reviewerName,
+        'reviewer_phone': widget.reviewerPhone,
+        'rating': _rating.toString(),
+        'comment': comment,
+      });
+
+      if (mounted) {
+        if (res.toString().toLowerCase().contains('success') || res is Map || res is List) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Review submitted successfully!'), backgroundColor: Colors.green),
+          );
+          widget.onSuccess();
+          Navigator.pop(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.toString())));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to submit review: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.only(
-        left: 25,
-        right: 25,
-        top: 25,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 25,
+        top: 20,
+        left: 20,
+        right: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -716,134 +747,56 @@ class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
         children: [
           Center(
             child: Container(
-              width: 50,
-              height: 5,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(10),
-              ),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
             ),
           ),
-          const SizedBox(height: 25),
-          const Text(
-            'Write a Review',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Poppins',
-              color: Color(0xFF272000),
-            ),
+          const SizedBox(height: 16),
+          const Text('Write a Review', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Color(0xFF212529))),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              return IconButton(
+                icon: Icon(
+                  index < _rating ? Icons.star : Icons.star_border,
+                  color: const Color(0xFFF6D207),
+                  size: 32,
+                ),
+                onPressed: () => setState(() => _rating = index + 1),
+              );
+            }),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            'How was your experience? Rate and share your thoughts.',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-              fontFamily: 'Poppins',
-            ),
-          ),
-          const SizedBox(height: 25),
-          
-          // Star Rating
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(5, (index) {
-                return IconButton(
-                  onPressed: () => setState(() => _rating = index + 1),
-                  icon: Icon(
-                    index < _rating ? Icons.star : Icons.star_border,
-                    size: 40,
-                    color: const Color(0xFFD7B41A),
-                  ),
-                );
-              }),
-            ),
-          ),
-          
-          const SizedBox(height: 25),
-          
+          const SizedBox(height: 14),
           TextField(
             controller: _commentController,
-            maxLines: 4,
-            style: const TextStyle(fontFamily: 'Poppins'),
+            maxLines: 3,
             decoration: InputDecoration(
               hintText: 'Share your experience...',
-              hintStyle: const TextStyle(color: Colors.grey, fontFamily: 'Poppins'),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               filled: true,
-              fillColor: const Color(0xFFF5F5F5),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.all(15),
+              fillColor: const Color(0xFFF8F9FA),
             ),
           ),
-          
-          const SizedBox(height: 30),
-          
+          const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
-            height: 55,
+            height: 48,
             child: ElevatedButton(
-              onPressed: _isPosting ? null : _submitReview,
+              onPressed: _isSubmitting ? null : _submitReview,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFD7B41A),
-                foregroundColor: Colors.black,
-                elevation: 5,
-                shadowColor: const Color(0xFFD7B41A).withOpacity(0.5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                foregroundColor: const Color(0xFF272000),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: _isPosting 
-                ? const SizedBox(width: 25, height: 25, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                : const Text(
-                'Post Review',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Poppins',
-                ),
-              ),
+              child: _isSubmitting
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                  : const Text('Submit Review', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
             ),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _submitReview() async {
-    if (_rating == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a rating')));
-      return;
-    }
-
-    setState(() => _isPosting = true);
-
-    try {
-      final res = await ApiClient().post('save_review', {
-        'contact_phone': widget.contactPhone,
-        'reviewer_name': widget.reviewerName,
-        'reviewer_phone': widget.reviewerPhone,
-        'rating': _rating.toString(),
-        'comment': _commentController.text.trim(),
-      });
-
-      if (res.toString().toLowerCase().contains('success')) {
-        widget.onSuccess();
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Review posted successfully!'), backgroundColor: Colors.green),
-          );
-        }
-      } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.toString())));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      if (mounted) setState(() => _isPosting = false);
-    }
   }
 }

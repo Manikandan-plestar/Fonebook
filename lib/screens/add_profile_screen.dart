@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -615,7 +616,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                 child: Column(
                   children: [
                     const SizedBox(height: 30),
-                    Text(isEdit ? 'Edit Profile' : 'Add Profile', 
+                    Text(isEdit ? 'Edit Profile' : 'Business Profile', 
                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF232323), fontFamily: 'Poppins')),
                     const SizedBox(height: 20),
                     
@@ -659,10 +660,11 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                     
                     const SizedBox(height: 30),
                     
-                    if (isEdit) _buildTextField(_phoneController, 'Phone number', keyboardType: TextInputType.phone, isReadOnly: true),
+                    _buildTextField(_phoneController, 'Phone number', keyboardType: TextInputType.phone, isReadOnly: true),
+                    _buildTextField(_wpController, 'WhatsApp Number', keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly]),
                     _buildTextField(_nameController, _getLabel('name')),
                     _buildTextField(_titleController, _getLabel('title')),
-                    _buildTextField(_aboutController, _getLabel('about'), maxLines: 5),
+                    _buildTextField(_aboutController, _getLabel('about'), maxLines: 5, inputFormatters: [LengthLimitingTextInputFormatter(600)]),
                     _buildTextField(_locationController, 'Business location (GPS Only)', isReadOnly: true, maxLines: 3),
                     
                     Padding(
@@ -870,22 +872,66 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, {bool isReadOnly = false, TextInputType? keyboardType, int maxLines = 1}) {
+  Widget _buildTextField(
+    TextEditingController controller, 
+    String hint, {
+    bool isReadOnly = false, 
+    TextInputType? keyboardType, 
+    List<TextInputFormatter>? inputFormatters,
+    int maxLines = 1,
+    IconData? prefixIcon,
+  }) {
+    Widget iconWidget;
+    final hLower = hint.toLowerCase();
+    
+    if (hLower.contains('whatsapp')) {
+      iconWidget = Padding(
+        padding: const EdgeInsets.all(12),
+        child: Image.asset(
+          'assets/images/whatsapp.png',
+          width: 20,
+          height: 20,
+          color: const Color(0xFF6C757D),
+          fit: BoxFit.contain,
+        ),
+      );
+    } else {
+      IconData defaultIcon;
+      if (prefixIcon != null) {
+        defaultIcon = prefixIcon;
+      } else if (hLower.contains('phone')) {
+        defaultIcon = Icons.phone_outlined;
+      } else if (hLower.contains('name')) {
+        defaultIcon = Icons.person_outline;
+      } else if (hLower.contains('profession') || hLower.contains('title') || hLower.contains('actor') || hLower.contains('service')) {
+        defaultIcon = Icons.work_outline;
+      } else if (hLower.contains('about')) {
+        defaultIcon = Icons.info_outline;
+      } else if (hLower.contains('location') || hLower.contains('gps') || hLower.contains('address')) {
+        defaultIcon = Icons.location_on_outlined;
+      } else {
+        defaultIcon = Icons.edit_note_outlined;
+      }
+      iconWidget = Icon(defaultIcon, color: const Color(0xFF6C757D), size: 20);
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
       child: TextField(
         controller: controller,
         readOnly: isReadOnly,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         maxLines: maxLines,
         style: const TextStyle(color: Color(0xFF212529), fontSize: 15, fontFamily: 'Poppins'),
         decoration: InputDecoration(
+          prefixIcon: iconWidget,
           hintText: hint,
           hintStyle: const TextStyle(color: Color(0xFF6C757D), fontFamily: 'Poppins'),
           filled: true,
           fillColor: isReadOnly ? const Color(0xFFE9ECEF) : const Color(0xFFF1F3F4),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         ),
       ),
     );

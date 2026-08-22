@@ -11,18 +11,25 @@ class ContactCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onCall;
   final VoidCallback? onFavouriteToggle;
+  final VoidCallback? onWhatsAppTap;
+  final bool isSubscribed;
   final bool isFavourite;
+  final bool showFavouriteIcon;
   final bool showTime;
   final bool isFirstThree;
   final bool isMyContact;
   final bool isSponsored;
+
   const ContactCard({
     super.key,
     required this.contact,
     required this.onTap,
     this.onCall,
     this.onFavouriteToggle,
+    this.onWhatsAppTap,
+    this.isSubscribed = false,
     this.isFavourite = false,
+    this.showFavouriteIcon = true,
     this.showTime = false,
     this.isFirstThree = false,
     this.isMyContact = false,
@@ -47,6 +54,254 @@ class ContactCard extends StatelessWidget {
     } catch (_) {
       return "";
     }
+  }
+
+  void _showContactActionDialog(BuildContext context) {
+    final wpNum = (contact.whatsapp != null && contact.whatsapp!.isNotEmpty && contact.whatsapp != 'null')
+        ? contact.whatsapp!
+        : contact.phone;
+
+    final hasName = contact.name.isNotEmpty;
+    final hasService = contact.service.isNotEmpty && contact.service != 'null';
+    final String titleText = (hasName && hasService)
+        ? '${contact.name} - ${contact.service}'
+        : (hasName ? contact.name : (hasService ? contact.service : 'Contact Options'));
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (ctx, anim1, anim2) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shadowColor: Colors.black.withValues(alpha: 0.2),
+        elevation: 10,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        content: SizedBox(
+          width: MediaQuery.of(ctx).size.width * 0.85,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titleText,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Poppins',
+                  color: Color(0xFF212529),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Option 1: Call
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (!isMyContact) {
+                    unawaited(ApiClient().post('savecallcount', {
+                      'phone_no': contact.phone,
+                      'location': contact.location1 ?? '',
+                      'tag': '',
+                      'country': contact.location ?? ''
+                    }));
+                  }
+                  onCall?.call();
+                  final cleanPhone = contact.phone.replaceAll(RegExp(r'[^0-9+]'), '');
+                  if (cleanPhone.isNotEmpty) {
+                    launchUrl(Uri.parse('tel:$cleanPhone'));
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone, color: Colors.black, size: 26),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Call',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              color: Color(0xFF212529),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            contact.phone,
+                            style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const Divider(height: 16, thickness: 0.8),
+
+              // Option 2: WhatsApp
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  final cleanPhone = wpNum.replaceAll(RegExp(r'[^0-9+]'), '');
+                  if (cleanPhone.isNotEmpty) {
+                    launchUrl(Uri.parse('https://wa.me/$cleanPhone'));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('WhatsApp number not available')),
+                    );
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                  child: Row(
+                    children: [
+                      Image.asset('assets/images/whatsapp.png', width: 28, height: 28),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'WhatsApp',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              color: Color(0xFF212529),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            wpNum,
+                            style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      transitionBuilder: (ctx, anim, secondaryAnim, child) {
+        final curvedAnim = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.8, end: 1.0).animate(curvedAnim),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  void _showRemoveFavouriteDialog(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (ctx, anim1, anim2) => AlertDialog(
+        backgroundColor: const Color(0xFFF0F2F5), // White with grey mix
+        surfaceTintColor: const Color(0xFFF0F2F5),
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFF3CD),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.star_rounded, color: Color(0xFFD7B41A), size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Remove Favourite',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Poppins',
+                  color: Color(0xFF212529),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to remove ${contact.name.isNotEmpty ? contact.name : 'this contact'} from your favourites?',
+          style: const TextStyle(
+            fontSize: 14,
+            fontFamily: 'Poppins',
+            color: Color(0xFF495057),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 0),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF6C757D),
+            ),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onFavouriteToggle?.call();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC3545),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text(
+              'Yes, Remove',
+              style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+      transitionBuilder: (ctx, anim, secondaryAnim, child) {
+        final curvedAnim = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.85, end: 1.0).animate(curvedAnim),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -134,7 +389,7 @@ class ContactCard extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          "${contact.name}${isFavourite ? ' ★' : ''}",
+                          contact.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF212529), fontFamily: 'Poppins'),
@@ -206,37 +461,32 @@ class ContactCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Star / Favourite Button
-            if (onFavouriteToggle != null) ...[
+            // Favourite Star Icon (before Phone Icon)
+            if (showFavouriteIcon && (onFavouriteToggle != null || isFavourite)) ...[
               InkWell(
-                onTap: onFavouriteToggle,
+                onTap: () {
+                  if (isFavourite) {
+                    _showRemoveFavouriteDialog(context);
+                  } else {
+                    onFavouriteToggle?.call();
+                  }
+                },
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Icon(
                     isFavourite ? Icons.star : Icons.star_border,
-                    color: isFavourite ? const Color(0xFFF6D207) : Colors.grey.shade600,
+                    color: isFavourite ? const Color(0xFFF6D207) : Colors.grey,
                     size: 22,
                   ),
                 ),
               ),
-              const SizedBox(width: 2),
+              const SizedBox(width: 4),
             ],
 
-            // Call Button
+            // Phone Icon (Opens Center Action Dialog for WhatsApp or Call)
             InkWell(
-              onTap: () async {
-                if (!isMyContact) {
-                  unawaited(ApiClient().post('savecallcount', {
-                    'phone_no': contact.phone,
-                    'location': contact.location1 ?? '',
-                    'tag': '',
-                    'country': contact.location ?? ''
-                  }));
-                }
-                onCall?.call();
-                launchUrl(Uri.parse('tel:${contact.phone}'));
-              },
+              onTap: () => _showContactActionDialog(context),
               borderRadius: BorderRadius.circular(20),
               child: const Padding(
                 padding: EdgeInsets.all(8),

@@ -85,7 +85,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
 
   String get _title {
     switch (widget.mode) {
-      case 'profile': return 'Profiles';
+      case 'profile': return 'Business Profiles';
       case 'keywords': return 'Keywords';
       case 'verification': return 'Verification';
       case 'promote': return 'Promote';
@@ -130,10 +130,18 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                   if (widget.mode == 'profile')
                     InkWell(
                       onTap: _addContact,
-                      borderRadius: BorderRadius.circular(12),
-                      child: const Text(
-                        '+ Add Profile', 
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE9ECEF),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFCED4DA)),
+                        ),
+                        child: const Text(
+                          '+ Add Profile', 
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
+                        ),
                       ),
                     ),
                 ],

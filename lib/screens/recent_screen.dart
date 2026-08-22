@@ -224,9 +224,14 @@ class _RecentScreenState extends State<RecentScreen> {
                     return ContactCard(
                       contact: contact,
                       isFavourite: isFav,
+                      showFavouriteIcon: false,
                       isMyContact: isMyContact,
                       showTime: true,
                       onCall: () => widget.store.addToHistory(contact).then((_) => _load()),
+                      onFavouriteToggle: () async {
+                        await widget.store.toggleFavourite(contact);
+                        _load();
+                      },
                       onTap: () {},
                     );
                   },

@@ -114,9 +114,13 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 0 ? const Color(0xFF343A40) : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Image.asset('assets/images/group.png', width: 20, height: 20, color: _index == 0 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0)),
+                    child: Icon(
+                      Icons.search,
+                      size: 22,
+                      color: _index == 0 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
+                    ),
                   ),
-                  label: 'Contacts',
+                  label: 'Search',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
