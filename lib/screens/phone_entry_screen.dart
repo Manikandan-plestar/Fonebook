@@ -36,36 +36,61 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
     setState(() => _loading = true);
 
     try {
-      final res = await ApiClient().get('check_search_type', {'phone': fullPhone});
-      
-      if (mounted) {
-        bool exists = res is List && res.isNotEmpty && res[0]['error'] == null && 
-                      (res[0]['name']?.toString().trim().isNotEmpty ?? false);
+      final targetEmail = widget.email.trim().toLowerCase();
+      final clean10 = number.length >= 10 ? number.substring(number.length - 10) : number;
 
-        if (exists) {
-          // Check ownership: Is this number linked to someone else's email?
-          final existingEmail = res[0]['email']?.toString() ?? res[0]['owner_email']?.toString();
-          
-          if (existingEmail != null && existingEmail.isNotEmpty && existingEmail != widget.email) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('This phone number is already registered to another account.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-            return;
+      final resList = <dynamic>[];
+      try {
+        final r1 = await ApiClient().get('check-contact', {
+          'type': 'search',
+          'query': clean10,
+        });
+        if (r1 is List) resList.addAll(r1);
+      } catch (e) {
+        debugPrint("Phone entry check-contact error: $e");
+      }
+
+      try {
+        final r2 = await ApiClient().get('check_search_type', {'phone': fullPhone});
+        if (r2 is List) resList.addAll(r2);
+      } catch (e) {
+        debugPrint("Phone entry check_search_type error: $e");
+      }
+
+      String? registeredOtherEmail;
+      for (final item in resList) {
+        if (item is Map && item['error'] == null) {
+          final itemPhoneRaw = (item['phone'] ?? item['phone_no'] ?? '').toString();
+          final itemPhoneClean = itemPhoneRaw.replaceAll(RegExp(r'[^0-9]'), '');
+          final itemEmail = (item['email'] ?? item['owner_email'] ?? '').toString().trim().toLowerCase();
+
+          if (itemPhoneClean.isNotEmpty && itemEmail.isNotEmpty) {
+            final item10 = itemPhoneClean.length >= 10 ? itemPhoneClean.substring(itemPhoneClean.length - 10) : itemPhoneClean;
+            if (item10 == clean10 && itemEmail != targetEmail) {
+              registeredOtherEmail = itemEmail;
+              break;
+            }
           }
+        }
+      }
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => AddProfileScreen(email: widget.email, phone: fullPhone)),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => AddProfileScreen(email: widget.email, initialPhone: fullPhone)),
+      if (registeredOtherEmail != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This mobile number is already registered to another account.'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
+        return;
+      }
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => AddProfileScreen(email: widget.email, phone: fullPhone)),
+        );
       }
     } catch (e) {
       if (mounted) {

@@ -328,18 +328,39 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
       final cleanP = fullPhone.replaceAll(RegExp(r'[^0-9]'), '');
       if (cleanP.isEmpty) return true;
 
-      final res = await widget.api.get('check-contact', {
-        'type': 'search',
-        'query': cleanP,
-      });
+      final clean10 = cleanP.length >= 10 ? cleanP.substring(cleanP.length - 10) : cleanP;
+      final targetEmail = email.trim().toLowerCase();
 
-      if (res is List && res.isNotEmpty) {
-        for (final item in res) {
-          if (item is Map) {
-            final itemPhone = (item['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-            final itemEmail = (item['email'] ?? item['owner_email'] ?? '').toString().trim();
+      final resList = <dynamic>[];
+      try {
+        final r1 = await widget.api.get('check-contact', {
+          'type': 'search',
+          'query': clean10,
+        });
+        if (r1 is List) resList.addAll(r1);
+      } catch (e) {
+        debugPrint("Check-contact 1 error: $e");
+      }
 
-            if (itemPhone == cleanP && itemEmail.isNotEmpty && itemEmail.toLowerCase() != email.toLowerCase()) {
+      try {
+        final r2 = await widget.api.get('check_search_type', {'phone': fullPhone});
+        if (r2 is List) resList.addAll(r2);
+      } catch (e) {
+        debugPrint("Check-search-type 2 error: $e");
+      }
+
+      for (final item in resList) {
+        if (item is Map && item['error'] == null) {
+          final itemPhoneRaw = (item['phone'] ?? item['phone_no'] ?? '').toString();
+          final itemPhoneClean = itemPhoneRaw.replaceAll(RegExp(r'[^0-9]'), '');
+          final itemEmail = (item['email'] ?? item['owner_email'] ?? '').toString().trim().toLowerCase();
+
+          if (itemPhoneClean.isNotEmpty && itemEmail.isNotEmpty) {
+            final item10 = itemPhoneClean.length >= 10 ? itemPhoneClean.substring(itemPhoneClean.length - 10) : itemPhoneClean;
+
+            // If 10-digit phone matches AND belongs to a DIFFERENT email address
+            if (item10 == clean10 && itemEmail != targetEmail) {
+              debugPrint('[UNIQUENESS CHECK FAILED] Phone $clean10 is registered to $itemEmail (current user: $targetEmail)');
               return false; // Mobile number belongs to another user!
             }
           }
