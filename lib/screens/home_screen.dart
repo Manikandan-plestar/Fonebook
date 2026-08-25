@@ -284,6 +284,40 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _favs = favs);
   }
 
+  bool _matchesSelectedLocation(DirectoryContact c, String targetLoc) {
+    if (targetLoc.trim().isEmpty) return true;
+    if (_scopeLabel == 'International') return true;
+
+    final target = targetLoc.trim().toLowerCase();
+    if (target.isEmpty || target == 'international' || target == 'all') return true;
+
+    final parts = target
+        .split(',')
+        .map((p) => p.trim().toLowerCase())
+        .where((p) => p.isNotEmpty)
+        .toList();
+
+    final cLoc = (c.location ?? '').toLowerCase();
+    final cLoc1 = (c.location1 ?? '').toLowerCase();
+    final cCity = (c.city ?? '').toLowerCase();
+    final cState = (c.state ?? '').toLowerCase();
+
+    final fullText = '$cLoc $cLoc1 $cCity $cState'.trim();
+
+    // If contact has no location info at all, exclude when location filter is active
+    if (fullText.isEmpty) {
+      return false;
+    }
+
+    for (final p in parts) {
+      if (fullText.contains(p)) return true;
+      if (cCity.isNotEmpty && (p.contains(cCity) || cCity.contains(p))) return true;
+      if (cState.isNotEmpty && (p.contains(cState) || cState.contains(p))) return true;
+    }
+
+    return false;
+  }
+
   Future<void> _doSearch(String q) async {
     final query = q.trim().toLowerCase();
     if (query.isEmpty) return;
@@ -370,10 +404,19 @@ class _HomeScreenState extends State<HomeScreen> {
           category: 'my_contact',
           showContact: 'mwelsf',
         );
+      }).where((c) {
+        if (apiLocation.isNotEmpty && !_matchesSelectedLocation(c, apiLocation)) {
+          return false;
+        }
+        return true;
       }).toList();
 
       List<DirectoryContact> apiResults = rawApiList
           .where((e) {
+            if (apiLocation.isNotEmpty && !_matchesSelectedLocation(e, apiLocation)) {
+              return false;
+            }
+
             final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
             final serviceMatch = e.service.toLowerCase().contains(query);
             final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
