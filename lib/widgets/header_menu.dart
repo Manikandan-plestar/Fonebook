@@ -93,7 +93,7 @@ class _HeaderMenuState extends State<HeaderMenu> {
               return;
             }
 
-            if (v == 'My Profile') {
+            if (v == 'My Account' || v == 'My Profile') {
               Navigator.of(context).popUntil((route) => route.isFirst);
               Navigator.push(
                 context,
@@ -137,7 +137,7 @@ class _HeaderMenuState extends State<HeaderMenu> {
             }
           },
           itemBuilder: (c) => [
-            const PopupMenuItem(value: 'My Profile', child: Text('My Profile')),
+            const PopupMenuItem(value: 'My Account', child: Text('My Account')),
             const PopupMenuItem(value: 'Business', child: Text('Business')),
             const PopupMenuItem(value: 'Keywords', child: Text('Keywords')),
             const PopupMenuItem(value: 'Promote', child: Text('Promote')),

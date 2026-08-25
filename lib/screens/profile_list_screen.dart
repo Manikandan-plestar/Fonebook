@@ -194,7 +194,58 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                           itemCount: _profiles.length,
                           itemBuilder: (c, i) {
                             final p = _profiles[i];
-                            return _buildItem(p);
+                            if (widget.mode != 'profile') {
+                              return _buildItem(p);
+                            }
+                            return Dismissible(
+                              key: Key('profile_${p.id ?? p.phone}_$i'),
+                              direction: DismissDirection.endToStart,
+                              background: Container(
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 20),
+                                margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.delete_forever, color: Colors.white, size: 24),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              confirmDismiss: (direction) async {
+                                return await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    title: const Text('Delete Business Profile', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                    content: Text('Are you sure you want to delete ${p.name} permanently? This action cannot be undone.'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                        child: const Text('Delete', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
+                                  ),
+                                ) ?? false;
+                              },
+                              onDismissed: (direction) async {
+                                await _deleteBusinessProfile(p);
+                              },
+                              child: _buildItem(p),
+                            );
                           },
                         ),
             ),
@@ -202,6 +253,58 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _deleteBusinessProfile(DirectoryContact p) async {
+    try {
+      final phone = p.phone;
+      final email = _currentSession.email ?? widget.session.email ?? '';
+      final existingId = p.id ?? '';
+
+      final Map<String, String> deletePayload = {
+        if (existingId.isNotEmpty) 'id': existingId,
+        'name': p.name,
+        'phone': phone,
+        'phone_no': phone,
+        'phone1': phone,
+        'service': p.service,
+        'publish': 'no',
+        'email': email,
+        'owner_email': email,
+        'action': 'delete',
+        'delete': 'yes',
+        'type': 'delete',
+      };
+
+      try {
+        await widget.api.post('save_publish', {'phone': phone, 'publish': 'no'});
+      } catch (_) {}
+      try {
+        await widget.api.post('savecontacts', deletePayload);
+      } catch (_) {}
+      try {
+        await widget.api.post('delete_contact', deletePayload);
+      } catch (_) {}
+      try {
+        await widget.api.post('delete_my_contact', deletePayload);
+      } catch (_) {}
+
+      DirectoryContact.bust(phone);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Business profile deleted permanently.'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting profile: $e')),
+        );
+      }
+    } finally {
+      _load();
+    }
   }
 
   Widget _buildItem(DirectoryContact p) {

@@ -185,7 +185,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final res = await widget.api.post('get_my_contacts', {'email': email, 'owner_email': email});
       if (res is List) {
-        list.addAll(res.map((e) => MyContactItem.fromJson(Map<String, dynamic>.from(e))));
+        final parsed = res
+            .where((e) {
+              if (e is! Map) return false;
+              final cat = e['category']?.toString().toLowerCase() ?? '';
+              if (cat == 'app_profile') return false;
+              final title = e['title']?.toString() ?? '';
+              if (title.contains('"pincode"') || title.contains('"address"') || title.contains('"owner_email"')) return false;
+              final appProf = e['app_profile']?.toString() ?? '';
+              if (appProf.isNotEmpty && appProf != 'null') return false;
+              return true;
+            })
+            .map((e) => MyContactItem.fromJson(Map<String, dynamic>.from(e)))
+            .where((item) => item.category.toLowerCase() != 'app_profile')
+            .toList();
+        list.addAll(parsed);
       }
 
       if (mounted) {
@@ -224,78 +238,116 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final cleanQ = query.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
 
+      List<DirectoryContact> rawApiList = [];
+      String apiLocation = '';
+      if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
+        apiLocation = _selectedLocation ?? '';
+      }
+
+      try {
+        final data = await widget.api.get('check-contact', {
+          'type': 'search',
+          'query': q.trim(),
+          'location': apiLocation,
+        });
+
+        if (data is List) {
+          rawApiList = data
+              .where((e) => e != null && e is Map && e['name'] != null && e['name'].toString().trim().isNotEmpty)
+              .map((e) => DirectoryContact.fromJson(e))
+              .toList();
+        }
+      } catch (e) {
+        debugPrint("Search API call error: $e");
+      }
+
       final localMatches = _localContacts.where((c) {
         final cleanP = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
         final nameMatch = c.name.toLowerCase().contains(query);
         final titleMatch = c.title.toLowerCase().contains(query);
         final phoneMatch = cleanQ.isNotEmpty && cleanP.contains(cleanQ);
         return nameMatch || titleMatch || phoneMatch;
-      }).map((c) => DirectoryContact(
-        name: c.name,
-        service: c.title,
-        phone: c.phone,
-        priority: '1',
-        priorityBalance: '0',
-        category: 'my_contact',
-        showContact: 'mwelsf',
-      )).toList();
+      }).map((c) {
+        final cCleanPhone = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+        
+        // Find matching directory item by phone number to enrich profession and location
+        DirectoryContact? dirItem;
+        for (final apiItem in rawApiList) {
+          final apiCleanPhone = apiItem.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+          if (cCleanPhone.isNotEmpty && apiCleanPhone.isNotEmpty &&
+              (cCleanPhone == apiCleanPhone || cCleanPhone.endsWith(apiCleanPhone) || apiCleanPhone.endsWith(cCleanPhone))) {
+            dirItem = apiItem;
+            break;
+          }
+        }
 
-      List<DirectoryContact> apiResults = [];
+        final serviceStr = (c.title.isNotEmpty && c.title != 'My Contact')
+            ? c.title
+            : (dirItem?.service.isNotEmpty == true ? dirItem!.service : '');
 
-      String apiLocation = '';
-      if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
-        apiLocation = _selectedLocation ?? '';
-      }
+        final locStr = (dirItem?.location?.isNotEmpty == true)
+            ? dirItem!.location
+            : null;
 
-      final data = await widget.api.get('check-contact', {
-        'type': 'search',
-        'query': q.trim(),
-        'location': apiLocation,
-      });
+        return DirectoryContact(
+          name: c.name,
+          service: serviceStr,
+          phone: c.phone,
+          location: locStr,
+          location1: dirItem?.location1,
+          city: dirItem?.city,
+          state: dirItem?.state,
+          image: dirItem?.image,
+          priority: '1',
+          priorityBalance: '0',
+          category: 'my_contact',
+          showContact: 'mwelsf',
+        );
+      }).toList();
 
-      if (data is List) {
-        apiResults = data
-            .where((e) => e != null && e is Map && e['name'] != null && e['name'].toString().trim().isNotEmpty)
-            .map((e) => DirectoryContact.fromJson(e))
-            .where((e) {
-              final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-              final serviceMatch = e.service.toLowerCase().contains(query);
-              final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
-                                   (e.tags?.toLowerCase().contains(query) ?? false) ||
-                                   (e.additionalServices?.toLowerCase().contains(query) ?? false);
-              final nameMatch = e.name.toLowerCase().contains(query);
-              final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
+      List<DirectoryContact> apiResults = rawApiList
+          .where((e) {
+            final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+            final serviceMatch = e.service.toLowerCase().contains(query);
+            final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
+                                 (e.tags?.toLowerCase().contains(query) ?? false) ||
+                                 (e.additionalServices?.toLowerCase().contains(query) ?? false);
+            final nameMatch = e.name.toLowerCase().contains(query);
+            final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
 
-              // Allow match by profession (service), keywords, name, or phone number
-              final textMatch = serviceMatch || keywordMatch || nameMatch || phoneMatch;
-              if (!textMatch) return false;
+            // Name filter is strictly for MyContacts: if matched ONLY by name (not profession/keyword/phone), exclude from global directory results
+            if (nameMatch && !serviceMatch && !keywordMatch && !phoneMatch) {
+              return false;
+            }
 
-              final who = (e.whoContact ?? 'international').toLowerCase();
-              if (who == 'international' || who == 'all' || who.isEmpty) {
-                return true;
-              }
+            final textMatch = serviceMatch || keywordMatch || phoneMatch;
+            if (!textMatch) return false;
 
-              final isLocationSearch = _scopeLabel.startsWith('Location(');
-              final isCountrySearch = _scopeLabel.startsWith('Country(');
-              final isInternationalSearch = _scopeLabel == 'International';
-
-              if (who == 'country') {
-                return isCountrySearch || isInternationalSearch;
-              }
-
-              if (who == 'location') {
-                return isLocationSearch;
-              }
-
+            final who = (e.whoContact ?? 'international').toLowerCase();
+            if (who == 'international' || who == 'all' || who.isEmpty) {
               return true;
-            })
-            .where((e) => !localMatches.any((l) {
-              final lClean = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-              final eClean = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-              return lClean.isNotEmpty && eClean.isNotEmpty && (lClean == eClean || lClean.endsWith(eClean) || eClean.endsWith(lClean));
-            }))
-            .toList();
-      }
+            }
+
+            final isLocationSearch = _scopeLabel.startsWith('Location(');
+            final isCountrySearch = _scopeLabel.startsWith('Country(');
+            final isInternationalSearch = _scopeLabel == 'International';
+
+            if (who == 'country') {
+              return isCountrySearch || isInternationalSearch;
+            }
+
+            if (who == 'location') {
+              return isLocationSearch;
+            }
+
+            return true;
+          })
+          .where((e) => !localMatches.any((l) {
+            final lClean = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+            final eClean = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+            return lClean.isNotEmpty && eClean.isNotEmpty && (lClean == eClean || lClean.endsWith(eClean) || eClean.endsWith(lClean));
+          }))
+          .toList();
 
       final sponsoredMatches = <DirectoryContact>[];
       final normalApiMatches = <DirectoryContact>[];

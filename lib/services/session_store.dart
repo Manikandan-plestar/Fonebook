@@ -88,6 +88,19 @@ class SessionStore extends ChangeNotifier {
     return list.map((e) => DirectoryContact.fromJson(jsonDecode(e))).toList();
   }
 
+  Future<void> removeFromHistory(DirectoryContact c) async {
+    final p = await _prefs;
+    final list = p.getStringList('history') ?? [];
+    list.removeWhere((item) {
+      final parsed = DirectoryContact.fromJson(jsonDecode(item));
+      final samePhone = parsed.phone == c.phone;
+      final sameTime = c.timestamp == null || parsed.timestamp == c.timestamp;
+      return samePhone && sameTime;
+    });
+    await p.setStringList('history', list);
+    notifyListeners();
+  }
+
   Future<void> toggleFavourite(DirectoryContact c) async {
     final p = await _prefs;
     final list = p.getStringList('favourites') ?? [];
@@ -232,5 +245,15 @@ class SessionStore extends ChangeNotifier {
       if (map['isRead'] == false) return true;
     }
     return false;
+  }
+
+  Future<Map<String, dynamic>?> getLatestUnreadNotification() async {
+    final p = await _prefs;
+    final list = p.getStringList('app_notifications') ?? [];
+    for (final e in list) {
+      final map = jsonDecode(e) as Map<String, dynamic>;
+      if (map['isRead'] == false) return map;
+    }
+    return null;
   }
 }

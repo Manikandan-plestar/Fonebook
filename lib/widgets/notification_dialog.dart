@@ -122,8 +122,8 @@ class _NotificationDialogState extends State<NotificationDialog> {
         ],
       ),
       content: SizedBox(
-        width: screenSize.width * 0.9,
-        height: screenSize.height * 0.62,
+        width: screenSize.width * 0.82,
+        height: screenSize.height * 0.42,
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: Color(0xFFD7B41A)))
             : _notifications.isEmpty

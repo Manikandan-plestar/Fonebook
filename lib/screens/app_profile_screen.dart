@@ -41,6 +41,7 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
   String _originalPhone = '';
   String? _phoneError;
   String _userEmail = '';
+  int _savedContactsCount = 0;
 
   @override
   void initState() {
@@ -67,6 +68,7 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
     _pincodeCtrl.clear();
     _phoneCtrl.clear();
     _originalPhone = '';
+    _savedContactsCount = 0;
   }
 
   Future<String> _getEffectiveEmail() async {
@@ -96,6 +98,21 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
       // 1. Fetch fresh DB row for owner_email directly from my_contacts database table
       final res = await widget.api.post('get_my_contacts', {'email': email, 'owner_email': email});
       debugPrint('[APP PROFILE] Load response: $res');
+
+      if (res is List) {
+        _savedContactsCount = res.where((e) {
+          if (e is! Map) return false;
+          final cat = e['category']?.toString().toLowerCase() ?? '';
+          if (cat == 'app_profile') return false;
+          final title = e['title']?.toString() ?? '';
+          if (title.contains('"pincode"') || title.contains('"address"') || title.contains('"owner_email"')) return false;
+          final appProf = e['app_profile']?.toString() ?? '';
+          if (appProf.isNotEmpty && appProf != 'null') return false;
+          return true;
+        }).length;
+      } else {
+        _savedContactsCount = 0;
+      }
 
       final profileData = _extractProfileFromResponse(res);
       debugPrint('[APP PROFILE] Loaded app_profile: $profileData');
@@ -446,6 +463,42 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
         }
       }
 
+      // Check if phone number changed from _originalPhone to fullPhone
+      final cleanOrig = _originalPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      final cleanNew = fullPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cleanOrig.isNotEmpty && cleanOrig != cleanNew) {
+        final changeMessage = '$name changed their mobile number from $_originalPhone to $fullPhone.';
+        debugPrint('[PHONE CHANGE] Mobile number changed! Broadcasting notification...');
+
+        // 1. Add local notification
+        await SessionStore().addNotification(
+          title: 'Phone Number Changed',
+          message: changeMessage,
+        );
+
+        // 2. Broadcast notification to backend for saved contact users
+        try {
+          await widget.api.post('save_my_contact', {
+            'email': email,
+            'owner_email': email,
+            'name': name,
+            'phone': fullPhone,
+            'category': 'notification',
+            'title': 'Phone Number Changed',
+            'app_profile': jsonEncode({
+              'type': 'number_change',
+              'old_phone': _originalPhone,
+              'new_phone': fullPhone,
+              'name': name,
+              'email': email,
+              'message': changeMessage,
+            }),
+          });
+        } catch (e) {
+          debugPrint('[PHONE CHANGE] Error broadcasting notification: $e');
+        }
+      }
+
       _originalPhone = fullPhone;
 
       // Re-fetch profile from database to ensure fresh state
@@ -496,7 +549,7 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'My Profile',
+              title: 'My Account',
               showMenu: true,
               onBack: widget.isMandatoryOnboarding ? null : () => Navigator.pop(context),
               api: widget.api,
@@ -560,31 +613,37 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
           ),
           child: Column(
             children: [
-              // Avatar Initial
-              Container(
-                width: 90,
-                height: 90,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFF4C5B8F),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _getInitials(name),
-                  style: const TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    fontFamily: 'Poppins',
+              // Initials Badge Left Corner, Spacing, Name Followed
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 70,
+                    height: 70,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF4C5B8F),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _getInitials(name),
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // Name
-              Text(
-                name,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               const Divider(color: Color(0xFFE9ECEF)),
@@ -592,11 +651,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
               // Info Items
               const SizedBox(height: 10),
               if (_userEmail.isNotEmpty) _buildViewInfoRow(Icons.email_outlined, 'Email Address', _userEmail),
+              _buildViewInfoRow(Icons.contacts_outlined, 'Total Saved Contacts', '$_savedContactsCount Contacts'),
               if (phone.trim().isNotEmpty && phone.trim() != '+91') _buildViewInfoRow(Icons.phone_outlined, 'Mobile Number', phone),
-              if (address.isNotEmpty) _buildViewInfoRow(Icons.home_outlined, 'Address', address),
-              if (state.isNotEmpty) _buildViewInfoRow(Icons.map_outlined, 'State', state),
-              if (countryName.isNotEmpty) _buildViewInfoRow(Icons.public_outlined, 'Country', countryName),
-              if (pincode.isNotEmpty) _buildViewInfoRow(Icons.pin_drop_outlined, 'Pincode', pincode),
             ],
           ),
         ),
@@ -609,8 +665,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
           height: 50,
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD7B41A),
-              foregroundColor: Colors.black,
+              backgroundColor: const Color(0xFF4C5B8F),
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
             ),
@@ -768,65 +824,6 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-
-          // 3. Address Field
-          TextFormField(
-            controller: _addressCtrl,
-            maxLines: 2,
-            decoration: InputDecoration(
-              labelText: 'Address',
-              hintText: 'Enter street, door no, or locality',
-              prefixIcon: const Icon(Icons.home_outlined, color: Color(0xFF6C757D)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 4. State Field
-          TextFormField(
-            controller: _stateCtrl,
-            decoration: InputDecoration(
-              labelText: 'State',
-              hintText: 'e.g. Tamil Nadu, Maharashtra, California',
-              prefixIcon: const Icon(Icons.map_outlined, color: Color(0xFF6C757D)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 5. Country Field
-          TextFormField(
-            controller: _countryCtrl,
-            decoration: InputDecoration(
-              labelText: 'Country',
-              hintText: 'e.g. India, United States',
-              prefixIcon: const Icon(Icons.public_outlined, color: Color(0xFF6C757D)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 6. Pincode Field
-          TextFormField(
-            controller: _pincodeCtrl,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              labelText: 'Pincode',
-              hintText: 'e.g. 600001',
-              prefixIcon: const Icon(Icons.pin_drop_outlined, color: Color(0xFF6C757D)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
           const SizedBox(height: 26),
 

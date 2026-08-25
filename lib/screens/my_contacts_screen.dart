@@ -1698,15 +1698,21 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                     onTap: _showAddDialog,
                     borderRadius: BorderRadius.circular(18),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE9ECEF),
+                        color: const Color(0xFF4C5B8F),
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFCED4DA)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF4C5B8F).withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: const Text(
                         '+ Add',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Poppins'),
                       ),
                     ),
                   ),
@@ -1782,8 +1788,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                     icon: const Icon(Icons.add),
                                     label: const Text('Add Contact'),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFD7B41A),
-                                      foregroundColor: Colors.black,
+                                      backgroundColor: const Color(0xFF4C5B8F),
+                                      foregroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                     ),
                                   ),
@@ -1811,7 +1817,75 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                               itemCount: _filteredContacts.length,
                               itemBuilder: (c, i) {
                                 final item = _filteredContacts[i];
-                                return _buildItem(item);
+                                return Dismissible(
+                                  key: Key('my_contact_${item.id}_${item.phone}_$i'),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(Icons.delete_forever, color: Colors.white, size: 24),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Delete',
+                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  confirmDismiss: (direction) async {
+                                    return await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                        title: const Text('Delete Contact', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                        content: Text('Are you sure you want to delete ${item.name}?'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                            child: const Text('Delete', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                          ),
+                                        ],
+                                      ),
+                                    ) ?? false;
+                                  },
+                                  onDismissed: (direction) async {
+                                    final messenger = ScaffoldMessenger.of(context);
+                                    try {
+                                      final email = await _getEffectiveEmail();
+                                      await widget.api.post('delete_my_contact', {
+                                        'id': item.id?.toString() ?? '',
+                                        'email': email,
+                                        'owner_email': email,
+                                      });
+                                      if (mounted) {
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('Contact deleted successfully'), backgroundColor: Colors.green),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        messenger.showSnackBar(
+                                          SnackBar(content: Text('Error deleting contact: $e')),
+                                        );
+                                      }
+                                    }
+                                    _load();
+                                  },
+                                  child: _buildItem(item),
+                                );
                               },
                             ),
             ),

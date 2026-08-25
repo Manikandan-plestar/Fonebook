@@ -221,18 +221,70 @@ class _RecentScreenState extends State<RecentScreen> {
                     final isFav = _favs.any((e) => e.phone == contact.phone);
                     final isMyContact = contact.category == 'my_contact';
                     
-                    return ContactCard(
-                      contact: contact,
-                      isFavourite: isFav,
-                      showFavouriteIcon: false,
-                      isMyContact: isMyContact,
-                      showTime: true,
-                      onCall: () => widget.store.addToHistory(contact).then((_) => _load()),
-                      onFavouriteToggle: () async {
-                        await widget.store.toggleFavourite(contact);
-                        _load();
+                    return Dismissible(
+                      key: Key('recent_${contact.phone}_${contact.timestamp}_$i'),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.delete_forever, color: Colors.white, size: 24),
+                            SizedBox(width: 6),
+                            Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      confirmDismiss: (direction) async {
+                        return await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: const Text('Delete Recent Call', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                            content: Text('Are you sure you want to remove ${contact.name} from your recent call history?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                child: const Text('Delete', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        ) ?? false;
                       },
-                      onTap: () {},
+                      onDismissed: (direction) async {
+                        setState(() {
+                          _list.removeWhere((e) => e.phone == contact.phone && e.timestamp == contact.timestamp);
+                          _applyFilters();
+                        });
+                        await widget.store.removeFromHistory(contact);
+                      },
+                      child: ContactCard(
+                        contact: contact,
+                        isFavourite: isFav,
+                        showFavouriteIcon: false,
+                        isMyContact: isMyContact,
+                        showTime: true,
+                        onCall: () => widget.store.addToHistory(contact).then((_) => _load()),
+                        onFavouriteToggle: () async {
+                          await widget.store.toggleFavourite(contact);
+                          _load();
+                        },
+                        onTap: () {},
+                      ),
                     );
                   },
                 ),
