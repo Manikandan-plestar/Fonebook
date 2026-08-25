@@ -6,6 +6,7 @@ import '../services/session_store.dart';
 import '../models/user_session.dart';
 import '../models/contact.dart';
 import 'add_profile_screen.dart';
+import 'app_profile_screen.dart';
 import 'app_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -99,32 +100,37 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     
     try {
-      // Check if user exists
-      final res = await _api.get('check_search_type1', {'email': email});
-      if (res is List && res.isNotEmpty) {
-        // Sign In
-        final contacts = res.map((e) => DirectoryContact.fromJson(e)).toList();
-        final isPremium = contacts.any((c) => c.verified == 1);
-        final contact = contacts.first;
-        final session = UserSession(
-          phone: contact.phone,
-          email: email,
-          place: contact.location,
-          place1: contact.location1,
-          country: contact.location?.split(', ').last,
-          image: contact.image,
-          premium: isPremium,
-        );
-        await _store.save(session);
-        if (mounted) {
+      final session = UserSession(email: email, premium: false);
+      await _store.save(session);
+
+      // Check if user already has an Application Profile
+      final cachedProfile = await _store.getAppProfile();
+      bool hasProfile = (cachedProfile != null && (cachedProfile['name']?.toString().isNotEmpty == true || cachedProfile['phone']?.toString().isNotEmpty == true));
+
+      if (!hasProfile) {
+        try {
+          final res = await _api.post('get_app_profile', {'email': email, 'owner_email': email, 'type': 'profile', 'target_field': 'profile'});
+          if (res != null && ((res is Map && res.isNotEmpty) || (res is List && res.isNotEmpty))) {
+            hasProfile = true;
+          }
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        if (hasProfile) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AppShell()));
-        }
-      } else {
-        // New User: Create Guest Session and land on Home
-        final session = UserSession(email: email, premium: false);
-        await _store.save(session);
-        if (mounted) {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AppShell()));
+        } else {
+          // Mandatory Application Profile creation for new users
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AppProfileScreen(
+                api: _api,
+                session: session,
+                isMandatoryOnboarding: true,
+              ),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -145,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             children: [
               const SizedBox(height: 71),
-              Image.asset('assets/images/logo.png', width: 65, height: 65, fit: BoxFit.contain),
+              Image.asset('assets/images/Small-icon.png', width: 65, height: 65, fit: BoxFit.contain),
               const SizedBox(height: 15),
               const Text('Fone Book', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: Color(0xFF232323))),
               const SizedBox(height: 30),

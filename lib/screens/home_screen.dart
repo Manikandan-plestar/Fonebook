@@ -240,62 +240,61 @@ class _HomeScreenState extends State<HomeScreen> {
         showContact: 'mwelsf',
       )).toList();
 
-      final isContactNameSearch = _localContacts.any(
-        (c) => c.name.toLowerCase().contains(query),
-      );
-
       List<DirectoryContact> apiResults = [];
 
-      if (!isContactNameSearch) {
-        String apiLocation = '';
-        if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
-          apiLocation = _selectedLocation ?? '';
-        }
+      String apiLocation = '';
+      if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
+        apiLocation = _selectedLocation ?? '';
+      }
 
-        final data = await widget.api.get('check-contact', {
-          'type': 'search',
-          'query': q.trim(),
-          'location': apiLocation,
-        });
+      final data = await widget.api.get('check-contact', {
+        'type': 'search',
+        'query': q.trim(),
+        'location': apiLocation,
+      });
 
-        if (data is List) {
-          apiResults = data
-              .where((e) => e != null && e is Map && e['name'] != null && e['name'].toString().trim().isNotEmpty)
-              .map((e) => DirectoryContact.fromJson(e))
-              .where((e) {
-                final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-                final serviceMatch = e.service.toLowerCase().contains(query);
-                final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
-                                     (e.tags?.toLowerCase().contains(query) ?? false) ||
-                                     (e.additionalServices?.toLowerCase().contains(query) ?? false);
-                final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
+      if (data is List) {
+        apiResults = data
+            .where((e) => e != null && e is Map && e['name'] != null && e['name'].toString().trim().isNotEmpty)
+            .map((e) => DirectoryContact.fromJson(e))
+            .where((e) {
+              final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+              final serviceMatch = e.service.toLowerCase().contains(query);
+              final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
+                                   (e.tags?.toLowerCase().contains(query) ?? false) ||
+                                   (e.additionalServices?.toLowerCase().contains(query) ?? false);
+              final nameMatch = e.name.toLowerCase().contains(query);
+              final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
 
-                // Allow match by profession (service), keywords, or phone number
-                final textMatch = serviceMatch || keywordMatch || phoneMatch;
-                if (!textMatch) return false;
+              // Allow match by profession (service), keywords, name, or phone number
+              final textMatch = serviceMatch || keywordMatch || nameMatch || phoneMatch;
+              if (!textMatch) return false;
 
-                final who = (e.whoContact ?? 'international').toLowerCase();
-                if (who == 'international' || who == 'all' || who.isEmpty) {
-                  return true;
-                }
-
-                final isLocationSearch = _scopeLabel.startsWith('Location(');
-                final isCountrySearch = _scopeLabel.startsWith('Country(');
-                final isInternationalSearch = _scopeLabel == 'International';
-
-                if (who == 'country') {
-                  return isCountrySearch || isInternationalSearch;
-                }
-
-                if (who == 'location') {
-                  return isLocationSearch;
-                }
-
+              final who = (e.whoContact ?? 'international').toLowerCase();
+              if (who == 'international' || who == 'all' || who.isEmpty) {
                 return true;
-              })
-              .where((e) => !localMatches.any((l) => l.phone == e.phone))
-              .toList();
-        }
+              }
+
+              final isLocationSearch = _scopeLabel.startsWith('Location(');
+              final isCountrySearch = _scopeLabel.startsWith('Country(');
+              final isInternationalSearch = _scopeLabel == 'International';
+
+              if (who == 'country') {
+                return isCountrySearch || isInternationalSearch;
+              }
+
+              if (who == 'location') {
+                return isLocationSearch;
+              }
+
+              return true;
+            })
+            .where((e) => !localMatches.any((l) {
+              final lClean = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+              final eClean = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+              return lClean.isNotEmpty && eClean.isNotEmpty && (lClean == eClean || lClean.endsWith(eClean) || eClean.endsWith(lClean));
+            }))
+            .toList();
       }
 
       final sponsoredMatches = <DirectoryContact>[];
@@ -778,9 +777,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                               trailing: const Icon(Icons.check_circle, color: Color(0xFF6C757D), size: 20),
                                               onTap: () {
                                                 Navigator.pop(bContext);
+                                                final cleanSub = subtitle.replaceAll('Google Maps Verified Location', '').trim();
+                                                final locText = cleanSub.isNotEmpty ? '$validArea, $cleanSub' : validArea;
                                                 setState(() {
                                                   _userHasCustomScope = true;
-                                                  _scopeLabel = 'Location($validArea)';
+                                                  _scopeLabel = 'Location($locText)';
                                                   _selectedLocation = validArea;
                                                 });
                                                 if (_search.text.isNotEmpty) _doSearch(_search.text);
@@ -854,10 +855,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (label.startsWith('Country(') && label.endsWith(')')) {
       label = label.substring(8, label.length - 1);
     }
-    if (label.contains(',')) {
-      label = label.split(',').first.trim();
-    }
-    return label;
+    return label.trim();
   }
 
   IconData get _scopeIcon {
@@ -939,7 +937,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Image.asset('assets/images/logo1.jpg', width: 85, height: 85, fit: BoxFit.contain),
+                      Image.asset('assets/images/Small-icon.png', width: 85, height: 85, fit: BoxFit.contain),
                       const SizedBox(height: 9),
                       const Text(
                         'Fone Book',

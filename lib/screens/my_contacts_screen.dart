@@ -24,13 +24,13 @@ class MyContactItem {
     required this.name,
     required this.title,
     required this.phone,
-    this.category = 'Family',
+    this.category = '',
   });
 
   factory MyContactItem.fromJson(Map<String, dynamic> json, [String? savedCategory]) {
     String cat = json['category']?.toString() ?? '';
     if (cat.isEmpty || cat == 'null' || cat == 'Others') {
-      cat = (savedCategory != null && savedCategory.isNotEmpty && savedCategory != 'Others') ? savedCategory : 'Family';
+      cat = (savedCategory != null && savedCategory.isNotEmpty && savedCategory != 'Others') ? savedCategory : '';
     }
     return MyContactItem(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? ''),
@@ -334,12 +334,25 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       final res = await widget.api.post('get_my_contacts', {'email': email, 'owner_email': email});
       if (!mounted) return;
       if (res is List) {
-        final parsed = res.map((e) {
-          final m = Map<String, dynamic>.from(e);
-          final phone = m['phone']?.toString() ?? '';
-          final cleanP = phone.replaceAll(RegExp(r'[^0-9]'), '');
-          return MyContactItem.fromJson(m, catMap[cleanP]);
-        }).toList();
+        final parsed = res
+            .where((e) {
+              if (e is! Map) return false;
+              final cat = e['category']?.toString().toLowerCase() ?? '';
+              if (cat == 'app_profile') return false;
+              final title = e['title']?.toString() ?? '';
+              if (title.contains('"pincode"') || title.contains('"address"') || title.contains('"owner_email"')) return false;
+              final appProf = e['app_profile']?.toString() ?? '';
+              if (appProf.isNotEmpty && appProf != 'null') return false;
+              return true;
+            })
+            .map((e) {
+              final m = Map<String, dynamic>.from(e);
+              final phone = m['phone']?.toString() ?? '';
+              final cleanP = phone.replaceAll(RegExp(r'[^0-9]'), '');
+              return MyContactItem.fromJson(m, catMap[cleanP]);
+            })
+            .where((item) => item.category.toLowerCase() != 'app_profile')
+            .toList();
         
         // Sorting A-Z
         parsed.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -521,7 +534,9 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     Map<String, String> selectedCountry = dialCodes.firstWhere((e) => e['dial_code'] == '+91', orElse: () => dialCodes.first);
     String? phoneError;
     List<String> availableCategories = List.from(_categories.where((c) => c != 'All'));
-    String selectedCategory = availableCategories.isNotEmpty ? availableCategories.first : 'Family';
+    String selectedCategory = (_selectedCategory != 'All' && availableCategories.contains(_selectedCategory))
+        ? _selectedCategory
+        : (availableCategories.isNotEmpty ? availableCategories.first : 'Family');
 
     showDialog(
       context: context,
@@ -565,15 +580,6 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: titleCtrl,
-                        decoration: InputDecoration(
-                          labelText: 'Profession',
-                          hintText: 'e.g. Doctor, Manager, Engineer',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -847,15 +853,6 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                         validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
                       ),
                       const SizedBox(height: 12),
-                      TextFormField(
-                        controller: titleCtrl,
-                        decoration: InputDecoration(
-                          labelText: 'Profession',
-                          hintText: 'e.g. Doctor, Manager, Engineer',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1062,7 +1059,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       }
 
       setState(() => _loading = true);
-      List<Contact> deviceContacts = await FlutterContacts.getAll(properties: ContactProperty.values.toSet());
+      final lightweightProperties = ContactProperty.values.where((p) =>
+        p.name != 'photo' && p.name != 'thumbnail'
+      ).toSet();
+      List<Contact> deviceContacts = await FlutterContacts.getAll(properties: lightweightProperties);
       setState(() => _loading = false);
 
       if (deviceContacts.isEmpty) {
@@ -1550,11 +1550,18 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Fone Book',
+              title: 'Saved',
               showMenu: true,
               api: widget.api,
               session: widget.session,
               store: SessionStore(),
+              actions: [
+                Text(
+                  '${_filteredContacts.length} contacts',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF6C757D), fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 6),
+              ],
             ),
             if (_isSelectionMode)
               Padding(
@@ -1640,85 +1647,70 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                     ],
                   ),
                 ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'My Contacts',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
-                    ),
-                    Row(
-                      children: [
-                        Text(
-                          '${_filteredContacts.length} contacts',
-                          style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins', fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(width: 12),
-                        InkWell(
-                          onTap: _showAddDialog,
-                          borderRadius: BorderRadius.circular(18),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE9ECEF),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: const Color(0xFFCED4DA)),
-                            ),
-                            child: const Text(
-                              '+ Add',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(25),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (val) {
+                          setState(() {
+                            _searchQuery = val;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search by name, phone, title...',
+                          hintStyle: TextStyle(fontSize: 14, fontFamily: 'Poppins', color: Colors.grey.shade500),
+                          prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey.shade600),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: Icon(Icons.clear, size: 18, color: Colors.grey.shade600),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search by name, phone, title...',
-                    hintStyle: TextStyle(fontSize: 14, fontFamily: 'Poppins', color: Colors.grey.shade500),
-                    prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey.shade600),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.clear, size: 18, color: Colors.grey.shade600),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: _showAddDialog,
+                    borderRadius: BorderRadius.circular(18),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE9ECEF),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFCED4DA)),
+                      ),
+                      child: const Text(
+                        '+ Add',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             // Category Filter Tabs

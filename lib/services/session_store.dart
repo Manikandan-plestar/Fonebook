@@ -154,4 +154,83 @@ class SessionStore extends ChangeNotifier {
     final raw = (jsonDecode(p.getString('contact_categories_map') ?? '{}') as Map).cast<String, dynamic>();
     return raw.map((k, v) => MapEntry(k, v.toString()));
   }
+
+  // Application Profile Storage
+  Future<Map<String, dynamic>?> getAppProfile({String? email}) async {
+    final p = await _prefs;
+    final raw = p.getString('app_profile');
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      if (email != null && email.trim().isNotEmpty) {
+        final cachedEmail = (map['email'] ?? map['owner_email'] ?? '').toString().trim().toLowerCase();
+        if (cachedEmail.isNotEmpty && cachedEmail != email.trim().toLowerCase()) {
+          return null;
+        }
+      }
+      return map;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveAppProfile(Map<String, dynamic> profile) async {
+    final p = await _prefs;
+    await p.setString('app_profile', jsonEncode(profile));
+    notifyListeners();
+  }
+
+  // Notifications Management
+  Future<List<Map<String, dynamic>>> getNotifications() async {
+    final p = await _prefs;
+    final list = p.getStringList('app_notifications') ?? [];
+    return list.map((e) => jsonDecode(e) as Map<String, dynamic>).toList();
+  }
+
+  Future<void> addNotification({required String title, required String message}) async {
+    final p = await _prefs;
+    final list = p.getStringList('app_notifications') ?? [];
+    final item = {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': title,
+      'message': message,
+      'timestamp': DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now()),
+      'isRead': false,
+    };
+    list.insert(0, jsonEncode(item));
+    await p.setStringList('app_notifications', list);
+    notifyListeners();
+  }
+
+  Future<void> markNotificationsRead() async {
+    final p = await _prefs;
+    final list = p.getStringList('app_notifications') ?? [];
+    final updated = list.map((e) {
+      final map = jsonDecode(e) as Map<String, dynamic>;
+      map['isRead'] = true;
+      return jsonEncode(map);
+    }).toList();
+    await p.setStringList('app_notifications', updated);
+    notifyListeners();
+  }
+
+  Future<void> deleteNotification(int index) async {
+    final p = await _prefs;
+    final list = p.getStringList('app_notifications') ?? [];
+    if (index >= 0 && index < list.length) {
+      list.removeAt(index);
+      await p.setStringList('app_notifications', list);
+      notifyListeners();
+    }
+  }
+
+  Future<bool> hasUnreadNotifications() async {
+    final p = await _prefs;
+    final list = p.getStringList('app_notifications') ?? [];
+    for (final e in list) {
+      final map = jsonDecode(e) as Map<String, dynamic>;
+      if (map['isRead'] == false) return true;
+    }
+    return false;
+  }
 }

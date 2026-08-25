@@ -6,6 +6,7 @@ const _assetBase = kDebugMode
 
 
 class DirectoryContact {
+  final String? id;
   final String name;
   final String service;
   final String phone;
@@ -35,6 +36,7 @@ class DirectoryContact {
   final List<dynamic>? reviews;
 
   const DirectoryContact({
+    this.id,
     required this.name,
     required this.service,
     required this.phone,
@@ -81,7 +83,9 @@ class DirectoryContact {
 
   factory DirectoryContact.fromJson(Map<String, dynamic> json) {
     String p(String k) => json[k]?.toString() ?? '';
+    final idVal = p('id');
     return DirectoryContact(
+      id: idVal.isNotEmpty ? idVal : null,
       name: p('name'),
       service: p('service'),
       phone: p('phone_no') == '' ? (p('phone') == '' ? p('phone1') : p('phone')) : p('phone_no'),
@@ -113,6 +117,7 @@ class DirectoryContact {
   }
 
   Map<String, dynamic> toJson() => {
+        if (id != null) 'id': id,
         'name': name,
         'service': service,
         'phone_no': phone,

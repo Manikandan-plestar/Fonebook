@@ -50,10 +50,14 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
       }
       final res = await widget.api.get('check_search_type1', {'email': _currentSession.email});
       if (res is List) {
-        // Filter out "ghost" profiles that don't have a valid name or phone
+        // Filter out "ghost" profiles that don't have a valid name or phone, or are deleted
         final profiles = res
             .map((e) => DirectoryContact.fromJson(e))
-            .where((p) => p.name.isNotEmpty && p.phone.isNotEmpty)
+            .where((p) => p.name.isNotEmpty && 
+                          p.phone.isNotEmpty && 
+                          p.publish.toLowerCase() != 'no' && 
+                          p.publish.toLowerCase() != 'deleted' && 
+                          p.publish.toLowerCase() != '0')
             .toList();
         
         final isPremium = profiles.any((p) => p.verified == 1);
@@ -139,7 +143,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                           border: Border.all(color: const Color(0xFFCED4DA)),
                         ),
                         child: const Text(
-                          '+ Add Profile', 
+                          '+ Add', 
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
                         ),
                       ),

@@ -15,7 +15,10 @@ import '../screens/profile_list_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/favourites_screen.dart';
 
-class HeaderMenu extends StatelessWidget {
+import '../screens/app_profile_screen.dart';
+import 'notification_dialog.dart';
+
+class HeaderMenu extends StatefulWidget {
   final ApiClient? api;
   final SessionStore? store;
   final UserSession? session;
@@ -23,56 +26,125 @@ class HeaderMenu extends StatelessWidget {
   const HeaderMenu({super.key, this.api, this.store, this.session, this.onUpdate});
 
   @override
+  State<HeaderMenu> createState() => _HeaderMenuState();
+}
+
+class _HeaderMenuState extends State<HeaderMenu> {
+  bool _hasUnread = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SessionStore().addListener(_checkNotifications);
+    _checkNotifications();
+  }
+
+  @override
+  void dispose() {
+    SessionStore().removeListener(_checkNotifications);
+    super.dispose();
+  }
+
+  Future<void> _checkNotifications() async {
+    final unread = await SessionStore().hasUnreadNotifications();
+    if (mounted) {
+      setState(() {
+        _hasUnread = unread;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      icon: Image.asset('assets/images/three_dots.png', width: 25, height: 30),
-      onSelected: (v) async {
-        if (v == 'Logout') {
-          _confirmAndLogout(context);
-          return;
-        }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          icon: Icon(
+            _hasUnread ? Icons.notifications : Icons.notifications_none_outlined,
+            color: _hasUnread ? const Color(0xFFD7B41A) : Colors.black,
+            size: 24,
+          ),
+          onPressed: () async {
+            await NotificationDialog.show(context);
+            _checkNotifications();
+          },
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          icon: Image.asset('assets/images/three_dots.png', width: 25, height: 30),
+          onSelected: (v) async {
+            if (v == 'Logout') {
+              _confirmAndLogout(context);
+              return;
+            }
 
-        final effectiveApi = api ?? ApiClient();
-        final effectiveSession = (session != null && session!.email != null) ? session! : await SessionStore().read();
-        
-        if (effectiveSession.email == null) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please login to access management features.')));
-          return;
-        }
+            final effectiveApi = widget.api ?? ApiClient();
+            final effectiveSession = (widget.session != null && widget.session!.email != null)
+                ? widget.session!
+                : await SessionStore().read();
 
-        // if (v == 'Traffic') {
-        //   // NOTE: Currently open for Free users for testing. Revoke after testing.
-        //   _showTrafficMenu(context, effectiveApi, effectiveSession);
-        //   return;
-        // }
+            if (effectiveSession.email == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Please login to access management features.')),
+              );
+              return;
+            }
 
-        if (v == 'Favourites') {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => FavouritesScreen(api: effectiveApi, store: store ?? SessionStore(), session: effectiveSession)));
-          return;
-        }
+            if (v == 'My Profile') {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AppProfileScreen(api: effectiveApi, session: effectiveSession),
+                ),
+              );
+              return;
+            }
 
-        String mode = '';
-        if (v == 'Profile' || v == 'Business') mode = 'profile';
-        else if (v == 'Keywords') mode = 'keywords';
-        else if (v == 'Verification') mode = 'verification';
-        else if (v == 'Promote') mode = 'promote';
-        else if (v == 'Settings') mode = 'settings';
+            if (v == 'Favourites') {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => FavouritesScreen(
+                    api: effectiveApi,
+                    store: widget.store ?? SessionStore(),
+                    session: effectiveSession,
+                  ),
+                ),
+              );
+              return;
+            }
 
-        if (mode.isNotEmpty) {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileListScreen(api: effectiveApi, session: effectiveSession, mode: mode)));
-        }
-      },
-      itemBuilder: (c) => [
-        const PopupMenuItem(value: 'Business', child: Text('Business')),
-        const PopupMenuItem(value: 'Keywords', child: Text('Keywords')),
-        //const PopupMenuItem(value: 'Verification', child: Text('Verification')),
-        const PopupMenuItem(value: 'Promote', child: Text('Promote')),
-        //const PopupMenuItem(value: 'Traffic', child: Text('Traffic')),
-        const PopupMenuItem(value: 'Favourites', child: Text('Favourites')),
-        //const PopupMenuItem(value: 'Settings', child: Text('Settings')),
-        const PopupMenuItem(value: 'Logout', child: Text('Logout')),
+            String mode = '';
+            if (v == 'Profile' || v == 'Business') mode = 'profile';
+            else if (v == 'Keywords') mode = 'keywords';
+            else if (v == 'Verification') mode = 'verification';
+            else if (v == 'Promote') mode = 'promote';
+            else if (v == 'Settings') mode = 'settings';
+
+            if (mode.isNotEmpty) {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileListScreen(api: effectiveApi, session: effectiveSession, mode: mode),
+                ),
+              );
+            }
+          },
+          itemBuilder: (c) => [
+            const PopupMenuItem(value: 'My Profile', child: Text('My Profile')),
+            const PopupMenuItem(value: 'Business', child: Text('Business')),
+            const PopupMenuItem(value: 'Keywords', child: Text('Keywords')),
+            const PopupMenuItem(value: 'Promote', child: Text('Promote')),
+            const PopupMenuItem(value: 'Favourites', child: Text('Favourites')),
+            const PopupMenuItem(value: 'Logout', child: Text('Logout')),
+          ],
+        ),
       ],
     );
   }

@@ -554,13 +554,56 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       setState(() => _isLoading = true);
       try {
         final phone = _phoneController.text.trim();
-        await _api.post('delete_my_contact', {
-          'phone': phone,
-          'phone_no': phone,
-          'phone1': widget.phone ?? phone,
+        final rawPhone = widget.phone ?? phone;
+        final targetPhone = widget.phone != null && widget.phone!.isNotEmpty ? widget.phone! : phone;
+        final existingId = _existingProfile?.id ?? '';
+
+        final Map<String, String> deletePayload = {
+          if (existingId.isNotEmpty) 'id': existingId,
+          'name': _nameController.text.trim(),
+          'phone': targetPhone,
+          'phone_no': targetPhone,
+          'phone1': rawPhone,
+          'service': _titleController.text.trim(),
+          'publish': 'no',
           'email': widget.email,
           'owner_email': widget.email,
-        });
+          'action': 'delete',
+          'delete': 'yes',
+          'type': 'delete',
+        };
+
+        // 1. Update DB publish status to 'no' via save_publish and savecontacts
+        try {
+          final res = await _api.post('save_publish', {'phone': targetPhone, 'publish': 'no'});
+          debugPrint("save_publish res: $res");
+        } catch (e) {
+          debugPrint("save_publish error: $e");
+        }
+        try {
+          final res = await _api.post('savecontacts', deletePayload);
+          debugPrint("savecontacts publish=no res: $res");
+        } catch (e) {
+          debugPrint("savecontacts error: $e");
+        }
+
+        // 2. Post to delete_contact and delete_my_contact to remove permanently from DB table
+        try {
+          final res = await _api.post('delete_contact', deletePayload);
+          debugPrint("delete_contact res: $res");
+        } catch (e) {
+          debugPrint("delete_contact error: $e");
+        }
+        try {
+          final res = await _api.post('delete_my_contact', deletePayload);
+          debugPrint("delete_my_contact res: $res");
+        } catch (e) {
+          debugPrint("delete_my_contact error: $e");
+        }
+
+        DirectoryContact.bust(phone);
+        DirectoryContact.bust(rawPhone);
+        DirectoryContact.bust(targetPhone);
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -569,7 +612,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
             backgroundColor: Colors.red,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
