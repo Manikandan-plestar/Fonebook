@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
@@ -1111,8 +1112,9 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       }
 
       setState(() => _loading = true);
+      final fastProperties = ContactProperty.values.where((p) => p.name != 'photo' && p.name != 'thumbnail').toSet();
       List<Contact> deviceContacts = await FlutterContacts.getAll(
-        properties: ContactProperty.values.toSet(),
+        properties: fastProperties,
       );
       setState(() => _loading = false);
 
@@ -1304,84 +1306,126 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     Set<int> selectedIndices,
     List<String> sortedCodes,
   ) async {
-    final existingPhones = _contacts.map((c) => c.phone).toList();
-    final selectedItems = selectedIndices.map((idx) {
-      final item = deviceContacts[idx];
-      return {
-        'rawPhone': item.phones.isNotEmpty ? item.phones.first.number : '',
-        'title': item.organizations.isNotEmpty ? (item.organizations.first.jobTitle ?? item.organizations.first.name ?? '') : '',
-        'name': item.displayName ?? '',
-      };
-    }).toList();
+    final email = await _getEffectiveEmail();
+    debugPrint('[IMPORT] Logged-in email: $email');
+    debugPrint('[IMPORT] Device contacts selected: ${selectedIndices.length}');
 
-    final result = await Isolate.run(() {
+    final existingPhones = _contacts.map((c) => c.phone).toList();
+
+    // Prepare raw selected item payload list
+    final rawSelectedItems = <Map<String, dynamic>>[];
+    for (final idx in selectedIndices) {
+      if (idx < 0 || idx >= deviceContacts.length) continue;
+      final item = deviceContacts[idx];
+      final name = item.displayName ?? '';
+      final title = item.organizations.isNotEmpty
+          ? (item.organizations.first.jobTitle ?? item.organizations.first.name ?? '')
+          : '';
+      
+      final phoneNumbers = item.phones.map((p) => p.number).where((n) => n.trim().isNotEmpty).toList();
+      rawSelectedItems.add({
+        'name': name,
+        'title': title,
+        'phones': phoneNumbers,
+      });
+    }
+
+    // Process canonical normalization, MySQL-safe sanitization & Level-1 de-duplication in background isolate
+    final processingResult = await Isolate.run(() {
+      String sanitizeForDb(String input) {
+        if (input.isEmpty) return '';
+        final buffer = StringBuffer();
+        for (final rune in input.runes) {
+          if (rune <= 0xFFFF) {
+            if ((rune >= 0x2600 && rune <= 0x27BF) ||
+                (rune >= 0x2300 && rune <= 0x23FF) ||
+                (rune >= 0x2B50 && rune <= 0x2B55) ||
+                (rune >= 0xFE00 && rune <= 0xFE0F)) {
+              continue;
+            }
+            buffer.writeCharCode(rune);
+          }
+        }
+        final res = buffer.toString().trim();
+        return res.isEmpty ? 'Contact' : res;
+      }
+
       final existingNationalDigits = existingPhones.map((phone) {
         final d = phone.replaceAll(RegExp(r'[^0-9]'), '');
         return d.length >= 10 ? d.substring(d.length - 10) : d;
       }).where((d) => d.isNotEmpty).toSet();
 
       final seenInImport = <String>{};
-      final toImport = <Map<String, String>>[];
-      int alreadyExistsCount = 0;
+      final toImportList = <Map<String, String>>[];
+      int localDuplicatesCount = 0;
 
-      for (final raw in selectedItems) {
-        final rawPhone = raw['rawPhone'] ?? '';
-        final title = raw['title'] ?? '';
-        final name = raw['name'] ?? '';
+      for (final raw in rawSelectedItems) {
+        final rawName = raw['name']?.toString() ?? '';
+        final rawTitle = raw['title']?.toString() ?? '';
+        final name = sanitizeForDb(rawName);
+        final title = rawTitle.isNotEmpty ? sanitizeForDb(rawTitle) : '';
+        final List<String> phones = List<String>.from(raw['phones'] ?? []);
 
-        String cleanP = rawPhone.replaceAll(RegExp(r'[\(\)\-\s\.]'), '').trim();
-        if (cleanP.isEmpty) continue;
+        for (final rawPhone in phones) {
+          String cleanP = rawPhone.replaceAll(RegExp(r'[\(\)\-\s\.]'), '').trim();
+          if (cleanP.isEmpty) continue;
 
-        if (!cleanP.startsWith('+')) {
-          if (cleanP.length > 10 && cleanP.startsWith('0')) {
-            cleanP = cleanP.substring(1);
-          }
-          cleanP = '+91 $cleanP';
-        } else {
-          String code = '+91';
-          String rest = cleanP.substring(1);
-          for (final dc in sortedCodes) {
-            if (cleanP.startsWith(dc)) {
-              code = dc;
-              rest = cleanP.substring(dc.length);
-              break;
+          if (!cleanP.startsWith('+')) {
+            if (cleanP.length > 10 && cleanP.startsWith('0')) {
+              cleanP = cleanP.substring(1);
             }
+            cleanP = '+91 $cleanP';
+          } else {
+            String code = '+91';
+            String rest = cleanP.substring(1);
+            for (final dc in sortedCodes) {
+              if (cleanP.startsWith(dc)) {
+                code = dc;
+                rest = cleanP.substring(dc.length);
+                break;
+              }
+            }
+            cleanP = '$code $rest';
           }
-          cleanP = '$code $rest';
-        }
 
-        final digits = cleanP.replaceAll(RegExp(r'[^0-9]'), '');
-        final national = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
+          final digits = cleanP.replaceAll(RegExp(r'[^0-9]'), '');
+          final national = digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
 
-        if (national.isNotEmpty) {
-          if (existingNationalDigits.contains(national) || seenInImport.contains(national)) {
-            alreadyExistsCount++;
-            continue;
+          if (national.isNotEmpty) {
+            if (existingNationalDigits.contains(national) || seenInImport.contains(national)) {
+              localDuplicatesCount++;
+              continue;
+            }
+            seenInImport.add(national);
           }
-          seenInImport.add(national);
-        }
 
-        toImport.add({
-          'name': name,
-          'title': title,
-          'phone': cleanP,
-        });
+          toImportList.add({
+            'name': name,
+            'title': title,
+            'phone': cleanP,
+            'category': 'my_contact',
+            'type': 'profile',
+          });
+        }
       }
 
       return {
-        'toImport': toImport,
-        'alreadyExistsCount': alreadyExistsCount,
+        'toImport': toImportList,
+        'localDuplicatesCount': localDuplicatesCount,
       };
     });
 
-    final toImport = result['toImport'] as List<Map<String, String>>;
-    final alreadyExistsCount = result['alreadyExistsCount'] as int;
+    final toImport = processingResult['toImport'] as List<Map<String, String>>;
+    final initialDuplicates = processingResult['localDuplicatesCount'] as int;
+
+    debugPrint('[IMPORT] Local duplicates removed: $initialDuplicates');
+    debugPrint('[IMPORT] Contacts to import: ${toImport.length}');
 
     if (toImport.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('All selected contacts ($alreadyExistsCount) are already in your contacts list.'),
+            content: Text('All selected contacts ($initialDuplicates) already exist in your list.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1392,18 +1436,22 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     final int totalToImport = toImport.length;
     final processedNotifier = ValueNotifier<int>(0);
     final insertedNotifier = ValueNotifier<int>(0);
+    final duplicatesNotifier = ValueNotifier<int>(initialDuplicates);
+    final failedNotifier = ValueNotifier<int>(0);
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (progressCtx) {
         return AnimatedBuilder(
-          animation: Listenable.merge([processedNotifier, insertedNotifier]),
+          animation: Listenable.merge([processedNotifier, insertedNotifier, duplicatesNotifier, failedNotifier]),
           builder: (context, _) {
             final currentProcessed = processedNotifier.value;
             final totalInserted = insertedNotifier.value;
+            final totalDupes = duplicatesNotifier.value;
+            final totalFailed = failedNotifier.value;
             final progress = totalToImport > 0 ? (currentProcessed / totalToImport) : 0.0;
-            final percent = (progress * 100).toInt();
+            final percent = (progress * 100).toInt().clamp(0, 100);
 
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1450,16 +1498,40 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                   ),
                   const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
                       children: [
-                        const Text('New Contacts Added:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
-                        Text('$totalInserted', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green, fontFamily: 'Poppins')),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Successfully Added:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
+                            Text('$totalInserted', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green, fontFamily: 'Poppins')),
+                          ],
+                        ),
+                        if (totalDupes > 0) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Already Existing:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
+                              Text('$totalDupes', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.orange, fontFamily: 'Poppins')),
+                            ],
+                          ),
+                        ],
+                        if (totalFailed > 0) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Failed:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
+                              Text('$totalFailed', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red, fontFamily: 'Poppins')),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1471,59 +1543,135 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       },
     );
 
-    const int chunkSize = 200;
-    final email = await _getEffectiveEmail();
-
+    const int chunkSize = 250;
     final nav = Navigator.of(context, rootNavigator: true);
     final messenger = ScaffoldMessenger.of(context);
+    final random = Random();
+    bool anyBatchSucceeded = false;
 
     for (int i = 0; i < toImport.length; i += chunkSize) {
       final end = (i + chunkSize < toImport.length) ? i + chunkSize : toImport.length;
       final chunk = toImport.sublist(i, end);
+      final batchNum = (i / chunkSize).toInt() + 1;
+      final totalBatches = (toImport.length / chunkSize).ceil();
 
-      bool success = false;
+      debugPrint('[IMPORT] Batch $batchNum/$totalBatches (Size: ${chunk.length})');
+
+      bool batchSuccess = false;
       int attempts = 0;
-      while (!success && attempts < 3) {
+
+      while (!batchSuccess && attempts < 4) {
         attempts++;
+        debugPrint('[IMPORT] Batch $batchNum attempt $attempts');
+
         try {
-          final importRes = await widget.api.post('import_my_contacts', {
-            'email': email,
-            'owner_email': email,
-            'contacts': jsonEncode(chunk),
-          });
+          final importRes = await widget.api.post(
+            'import_my_contacts',
+            {
+              'email': email,
+              'owner_email': email,
+              'contacts': jsonEncode(chunk),
+            },
+            timeout: const Duration(seconds: 45),
+          );
+
+          debugPrint('[IMPORT] Batch $batchNum response: $importRes');
 
           if (importRes is Map) {
-            insertedNotifier.value += (importRes['inserted'] as int? ?? chunk.length);
+            if (importRes['status'] == 'error' || importRes['error'] != null) {
+              throw Exception(importRes['error'] ?? importRes['message'] ?? 'Server error during batch import');
+            }
+
+            final int inserted = int.tryParse(importRes['inserted']?.toString() ?? '') ?? 0;
+            final int skipped = int.tryParse(importRes['skipped']?.toString() ?? '') ??
+                int.tryParse(importRes['duplicates']?.toString() ?? '') ??
+                0;
+            final int failed = int.tryParse(importRes['failed']?.toString() ?? '') ?? 0;
+
+            final int finalInserted = (importRes['inserted'] == null && importRes['skipped'] == null)
+                ? chunk.length
+                : inserted;
+
+            insertedNotifier.value += finalInserted;
+            duplicatesNotifier.value += skipped;
+            failedNotifier.value += failed;
+            processedNotifier.value += (finalInserted + skipped + failed);
+          } else if (importRes is List) {
+            insertedNotifier.value += importRes.length;
+            processedNotifier.value += importRes.length;
           } else {
             insertedNotifier.value += chunk.length;
+            processedNotifier.value += chunk.length;
           }
-          success = true;
+
+          batchSuccess = true;
+          anyBatchSucceeded = true;
         } catch (e) {
-          debugPrint('Batch import chunk error (attempt $attempts): $e');
-          if (attempts < 3) {
-            await Future.delayed(const Duration(milliseconds: 300));
+          debugPrint('[IMPORT] Batch $batchNum attempt $attempts failed: $e');
+          final isPermanentError = e.toString().contains('400') ||
+              e.toString().contains('401') ||
+              e.toString().contains('403') ||
+              e.toString().contains('Invalid request');
+
+          if (isPermanentError || attempts >= 4) {
+            failedNotifier.value += chunk.length;
+            processedNotifier.value += chunk.length;
+            break;
           }
+
+          // Exponential backoff with random jitter (500ms, 1s, 2s, 4s)
+          final baseMs = (500 * pow(2, attempts - 1)).toInt();
+          final jitterMs = random.nextInt(250);
+          final delayMs = baseMs + jitterMs;
+          debugPrint('[IMPORT] Retrying batch $batchNum in ${delayMs}ms...');
+          await Future.delayed(Duration(milliseconds: delayMs));
         }
       }
 
-      processedNotifier.value = end;
-      await Future.delayed(const Duration(milliseconds: 1));
+      await Future.delayed(const Duration(milliseconds: 50));
     }
 
     if (mounted) {
       nav.pop();
+      final totalProcessed = processedNotifier.value;
       final totalInserted = insertedNotifier.value;
+      final totalDuplicates = duplicatesNotifier.value;
+      final totalFailed = failedNotifier.value;
 
-      String msg = '';
-      if (totalInserted > 0) {
-        msg = '$totalInserted contact(s) imported successfully';
+      debugPrint('[IMPORT] Final result: Processed=$totalProcessed, Inserted=$totalInserted, Duplicates=$totalDuplicates, Failed=$totalFailed');
+
+      if (totalFailed == 0 && anyBatchSucceeded) {
+        if (totalInserted > 0) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('$totalProcessed contact(s) processed: $totalInserted new added, $totalDuplicates existing.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('$totalProcessed contact(s) processed: All contacts already exist in your list ($totalDuplicates existing).'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else if (totalInserted > 0 || totalDuplicates > 0) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Import finished: $totalInserted added, $totalDuplicates existing, $totalFailed failed.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       } else {
-        msg = 'Import completed';
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Import failed. Please check network connection and try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
 
-      messenger.showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.green),
-      );
       _load();
     }
   }

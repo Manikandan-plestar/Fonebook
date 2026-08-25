@@ -25,13 +25,16 @@ class ApiClient {
     return jsonDecode(resp.body);
   }
 
-  Future<dynamic> post(String path, Map<String, String?> fields) async {
+  Future<dynamic> post(String path, Map<String, String?> fields, {Duration? timeout}) async {
     final body = <String, String>{};
     for (final entry in fields.entries) {
       if (entry.value != null) body[entry.key] = entry.value!;
     }
-    final resp = await _client.post(_uri(path), body: body).timeout(const Duration(seconds: 25));
-    if (resp.statusCode != 200) throw Exception('Server Error: ${resp.statusCode}');
+    final resp = await _client.post(_uri(path), body: body).timeout(timeout ?? const Duration(seconds: 25));
+    debugPrint('[API] POST $path -> Status: ${resp.statusCode}, Body: ${resp.body}');
+    if (resp.statusCode != 200) {
+      throw Exception('Server Error ${resp.statusCode}: ${resp.body}');
+    }
     try {
       return jsonDecode(resp.body);
     } catch (_) {
