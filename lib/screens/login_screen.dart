@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_client.dart';
@@ -104,23 +105,82 @@ class _LoginScreenState extends State<LoginScreen> {
       await _store.save(session);
 
       // Check if user already has an Application Profile
+      bool hasProfile = false;
       final cachedProfile = await _store.getAppProfile();
-      bool hasProfile = (cachedProfile != null && (cachedProfile['name']?.toString().isNotEmpty == true || cachedProfile['phone']?.toString().isNotEmpty == true));
+      if (cachedProfile != null && cachedProfile.isNotEmpty) {
+        final cName = cachedProfile['name']?.toString() ?? '';
+        final cPhone = cachedProfile['phone']?.toString() ?? '';
+        if (cName.isNotEmpty || cPhone.isNotEmpty) {
+          hasProfile = true;
+        }
+      }
 
       if (!hasProfile) {
         try {
-          final res = await _api.post('get_app_profile', {'email': email, 'owner_email': email, 'type': 'profile', 'target_field': 'profile'});
-          if (res != null && ((res is Map && res.isNotEmpty) || (res is List && res.isNotEmpty))) {
-            hasProfile = true;
+          final res = await _api.post('get_my_contacts', {
+            'email': email,
+            'owner_email': email,
+          });
+          
+          if (res != null) {
+            Map<String, dynamic>? profileData;
+            
+            dynamic items = res;
+            if (res is Map) {
+              if (res['data'] != null) items = res['data'];
+              else if (res['result'] != null) items = res['result'];
+              else if (res['contacts'] != null) items = res['contacts'];
+            }
+
+            if (items is List && items.isNotEmpty) {
+              for (final item in items) {
+                if (item is Map) {
+                  final cat = item['category']?.toString().toLowerCase() ?? '';
+                  final titleStr = item['title']?.toString() ?? '';
+                  final appProfStr = item['app_profile']?.toString() ?? '';
+
+                  if (cat == 'app_profile' || appProfStr.isNotEmpty || titleStr.contains('"phone"') || titleStr.contains('"owner_email"')) {
+                    try {
+                      final targetJsonStr = appProfStr.isNotEmpty ? appProfStr : titleStr;
+                      final decoded = jsonDecode(targetJsonStr);
+                      if (decoded is Map && decoded.isNotEmpty) {
+                        profileData = Map<String, dynamic>.from(decoded);
+                        break;
+                      }
+                    } catch (_) {}
+
+                    if (item['name'] != null || item['phone'] != null) {
+                      profileData = Map<String, dynamic>.from(item);
+                      break;
+                    }
+                  }
+                }
+              }
+            } else if (items is Map && items.isNotEmpty) {
+              if (items['name'] != null || items['phone'] != null) {
+                profileData = Map<String, dynamic>.from(items);
+              }
+            }
+
+            if (profileData != null) {
+              final pName = profileData['name']?.toString() ?? profileData['full_name']?.toString() ?? '';
+              final pPhone = profileData['phone']?.toString() ?? '';
+              if (pName.isNotEmpty || pPhone.isNotEmpty) {
+                hasProfile = true;
+                await _store.saveAppProfile(profileData);
+              }
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint("Error checking remote app profile: $e");
+        }
       }
 
       if (mounted) {
         if (hasProfile) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AppShell()));
         } else {
-          // Mandatory Application Profile creation for new users
+          // Mandatory Application Profile creation only for first-time new users
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(

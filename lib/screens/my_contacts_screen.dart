@@ -1111,10 +1111,9 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       }
 
       setState(() => _loading = true);
-      final lightweightProperties = ContactProperty.values.where((p) =>
-        p.name == 'name' || p.name == 'phones' || p.name == 'organizations'
-      ).toSet();
-      List<Contact> deviceContacts = await FlutterContacts.getAll(properties: lightweightProperties);
+      List<Contact> deviceContacts = await FlutterContacts.getAll(
+        properties: ContactProperty.values.toSet(),
+      );
       setState(() => _loading = false);
 
       if (deviceContacts.isEmpty) {

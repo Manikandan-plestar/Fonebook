@@ -323,8 +323,47 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
     );
   }
 
-  Future<bool> _checkMobileUniqueness(String fullPhone, String email) async {
-    // Mobile number uniqueness check disabled (reverted to old logic)
+  Future<bool> _checkMobileUniqueness(String fullPhone, String currentEmail) async {
+    final cleanTarget = fullPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanTarget.isEmpty) return true;
+    final nationalTarget = cleanTarget.length >= 10 ? cleanTarget.substring(cleanTarget.length - 10) : cleanTarget;
+    final normalizedCurrentEmail = currentEmail.trim().toLowerCase();
+
+    try {
+      final res = await widget.api.get('check-contact', {
+        'type': 'check_phone',
+        'phone': fullPhone,
+      });
+
+      if (res is List && res.isNotEmpty) {
+        for (final item in res) {
+          if (item is Map) {
+            String itemEmail = (item['email'] ?? item['owner_email'] ?? '').toString().trim().toLowerCase();
+            if (itemEmail.isEmpty) {
+              final appProf = item['app_profile']?.toString() ?? item['title']?.toString() ?? '';
+              if (appProf.isNotEmpty) {
+                try {
+                  final decoded = jsonDecode(appProf);
+                  if (decoded is Map) {
+                    itemEmail = (decoded['email'] ?? decoded['owner_email'] ?? '').toString().trim().toLowerCase();
+                  }
+                } catch (_) {}
+              }
+            }
+
+            final itemPhone = (item['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+            final itemNational = itemPhone.length >= 10 ? itemPhone.substring(itemPhone.length - 10) : itemPhone;
+
+            if (itemNational == nationalTarget && itemEmail.isNotEmpty && itemEmail != normalizedCurrentEmail) {
+              return false;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Uniqueness check error: $e");
+    }
+
     return true;
   }
 
@@ -347,6 +386,23 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
       final name = _nameCtrl.text.trim();
       final phoneDigits = _phoneCtrl.text.trim();
       final fullPhone = '${_selectedCountry['dial_code']} $phoneDigits';
+
+      final isUnique = await _checkMobileUniqueness(fullPhone, email);
+      if (!isUnique) {
+        setState(() {
+          _phoneError = 'This mobile number is already registered by another user';
+          _isSaving = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This mobile number is already registered by another user'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
 
       final profileMap = {
         'email': email,
