@@ -207,7 +207,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Fone Book',
+              title: 'Promote',
               onBack: () => Navigator.pop(context),
               showMenu: false,
             ),

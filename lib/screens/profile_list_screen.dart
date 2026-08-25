@@ -115,42 +115,35 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Fone Book',
+              title: _title,
               onBack: () => Navigator.pop(context),
               showMenu: true,
+              actions: [
+                if (widget.mode == 'profile')
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      onTap: _addContact,
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4C5B8F),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Text(
+                          '+ Add', 
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Poppins'),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
               api: widget.api,
               session: widget.session,
               store: SessionStore(),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
-                  ),
-                  if (widget.mode == 'profile')
-                    InkWell(
-                      onTap: _addContact,
-                      borderRadius: BorderRadius.circular(18),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE9ECEF),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFCED4DA)),
-                        ),
-                        child: const Text(
-                          '+ Add', 
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF495057), fontFamily: 'Poppins'),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 6),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)))

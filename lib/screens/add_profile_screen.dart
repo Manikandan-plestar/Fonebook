@@ -645,7 +645,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Fone Book',
+              title: isEdit ? 'Edit Profile' : 'Business Profile',
               onBack: () => Navigator.pop(context),
               showMenu: true,
               api: _api,
@@ -658,9 +658,6 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                 : SingleChildScrollView(
                 child: Column(
                   children: [
-                    const SizedBox(height: 30),
-                    Text(isEdit ? 'Edit Profile' : 'Business Profile', 
-                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF232323), fontFamily: 'Poppins')),
                     const SizedBox(height: 20),
                     
                     GestureDetector(
