@@ -27,10 +27,8 @@ class FonebookApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget home;
-    if (initialSession.email == null) {
+    if (initialSession.email == null || initialSession.email!.trim().isEmpty) {
       home = const LoginScreen();
-    } else if (initialSession.phone == null) {
-      home = AddProfileScreen(email: initialSession.email!);
     } else {
       home = const AppShell();
     }

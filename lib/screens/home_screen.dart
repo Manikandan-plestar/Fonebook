@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -128,32 +129,47 @@ class _HomeScreenState extends State<HomeScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 4),
+        // Try last known position first for instant GPS city resolution
+        Position? position = await Geolocator.getLastKnownPosition();
+        position ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 4),
+          ),
         );
 
-        if (!kIsWeb) {
+        if (!kIsWeb && position != null) {
           List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
           if (placemarks.isNotEmpty) {
             Placemark p = placemarks.first;
             final subLocality = p.subLocality?.trim();
             final locality = p.locality?.trim();
+            final subAdmin = p.subAdministrativeArea?.trim();
+            final admin = p.administrativeArea?.trim();
 
-            String cityArea = "Current Location";
-            if (subLocality != null && subLocality.isNotEmpty && locality != null && locality.isNotEmpty) {
-              cityArea = "$subLocality, $locality";
+            String cityArea = '';
+            if (subLocality != null && subLocality.isNotEmpty && locality != null && locality.isNotEmpty && subLocality.toLowerCase() != locality.toLowerCase()) {
+              cityArea = "$subLocality,$locality";
             } else if (locality != null && locality.isNotEmpty) {
               cityArea = locality;
+            } else if (subLocality != null && subLocality.isNotEmpty) {
+              cityArea = subLocality;
+            } else if (subAdmin != null && subAdmin.isNotEmpty) {
+              cityArea = subAdmin;
+            } else if (admin != null && admin.isNotEmpty) {
+              cityArea = admin;
             }
 
-            if (mounted && !_userHasCustomScope) {
+            if (cityArea.isNotEmpty && mounted && !_userHasCustomScope) {
               setState(() {
                 _scopeLabel = "Location($cityArea)";
                 _selectedLocation = cityArea;
               });
-              if (_search.text.isNotEmpty) _doSearch(_search.text);
+              if (_search.text.isNotEmpty) {
+                _doSearch(_search.text);
+              }
             }
           }
         }
@@ -197,8 +213,59 @@ class _HomeScreenState extends State<HomeScreen> {
               return true;
             })
             .map((e) => MyContactItem.fromJson(Map<String, dynamic>.from(e)))
-            .where((item) => item.category.toLowerCase() != 'app_profile')
             .toList();
+        // Auto-update saved contacts matching old_phone from number_change notifications
+        for (final item in res) {
+          if (item is Map && item['category']?.toString().toLowerCase() == 'notification') {
+            try {
+              final appProfRaw = item['app_profile']?.toString() ?? '';
+              if (appProfRaw.isNotEmpty) {
+                final payload = jsonDecode(appProfRaw);
+                if (payload is Map && payload['type'] == 'number_change') {
+                  final oldPhone = payload['old_phone']?.toString() ?? '';
+                  final newPhone = payload['new_phone']?.toString() ?? '';
+                  final userName = payload['name']?.toString() ?? 'Contact';
+
+                  final oldClean = oldPhone.replaceAll(RegExp(r'[^0-9]'), '');
+                  final newClean = newPhone.replaceAll(RegExp(r'[^0-9]'), '');
+                  final old10 = oldClean.length >= 10 ? oldClean.substring(oldClean.length - 10) : oldClean;
+
+                  if (old10.isNotEmpty && newPhone.isNotEmpty && oldClean != newClean) {
+                    for (final c in parsed) {
+                      final cClean = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+                      final c10 = cClean.length >= 10 ? cClean.substring(cClean.length - 10) : cClean;
+                      if (c10 == old10 && c.phone != newPhone) {
+                        debugPrint('[HOME AUTO UPDATE] Updating contact ${c.name} phone from ${c.phone} to $newPhone');
+                        
+                        // Update saved contact row in database
+                        widget.api.post('update_my_contact', {
+                          'id': c.id?.toString(),
+                          'email': email,
+                          'owner_email': email,
+                          'name': c.name,
+                          'phone': newPhone,
+                          'phone_no': newPhone,
+                          'title': c.title,
+                          'category': c.category,
+                        }).catchError((err) {
+                          debugPrint('Error auto-updating contact DB: $err');
+                        });
+
+                        SessionStore().addNotification(
+                          title: 'Contact Phone Updated',
+                          message: '$userName changed their mobile number. Saved contact "${c.name}" was automatically updated to $newPhone.',
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              debugPrint('Home auto-update parse error: $err');
+            }
+          }
+        }
+
         list.addAll(parsed);
       }
 

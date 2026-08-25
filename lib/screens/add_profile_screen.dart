@@ -928,16 +928,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     final hLower = hint.toLowerCase();
     
     if (hLower.contains('whatsapp')) {
-      iconWidget = Padding(
-        padding: const EdgeInsets.all(12),
-        child: Image.asset(
-          'assets/images/whatsapp.png',
-          width: 20,
-          height: 20,
-          color: const Color(0xFF6C757D),
-          fit: BoxFit.contain,
-        ),
-      );
+      iconWidget = const Icon(Icons.chat_bubble_outline, color: Color(0xFF6C757D), size: 20);
     } else {
       IconData defaultIcon;
       if (prefixIcon != null) {
@@ -968,6 +959,9 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         maxLines: maxLines,
         style: const TextStyle(color: Color(0xFF212529), fontSize: 15, fontFamily: 'Poppins'),
         decoration: InputDecoration(
+          labelText: hint,
+          labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
+          floatingLabelBehavior: FloatingLabelBehavior.always,
           prefixIcon: iconWidget,
           hintText: hint,
           hintStyle: const TextStyle(color: Color(0xFF6C757D), fontFamily: 'Poppins'),

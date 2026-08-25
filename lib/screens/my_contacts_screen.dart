@@ -354,6 +354,58 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
             .where((item) => item.category.toLowerCase() != 'app_profile')
             .toList();
         
+        // Auto-update saved contacts matching old_phone from number_change notifications
+        for (final item in res) {
+          if (item is Map && item['category']?.toString().toLowerCase() == 'notification') {
+            try {
+              final appProfRaw = item['app_profile']?.toString() ?? '';
+              if (appProfRaw.isNotEmpty) {
+                final payload = jsonDecode(appProfRaw);
+                if (payload is Map && payload['type'] == 'number_change') {
+                  final oldPhone = payload['old_phone']?.toString() ?? '';
+                  final newPhone = payload['new_phone']?.toString() ?? '';
+                  final userName = payload['name']?.toString() ?? 'Contact';
+
+                  final oldClean = oldPhone.replaceAll(RegExp(r'[^0-9]'), '');
+                  final newClean = newPhone.replaceAll(RegExp(r'[^0-9]'), '');
+                  final old10 = oldClean.length >= 10 ? oldClean.substring(oldClean.length - 10) : oldClean;
+
+                  if (old10.isNotEmpty && newPhone.isNotEmpty && oldClean != newClean) {
+                    for (final c in parsed) {
+                      final cClean = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+                      final c10 = cClean.length >= 10 ? cClean.substring(cClean.length - 10) : cClean;
+                      if (c10 == old10 && c.phone != newPhone) {
+                        debugPrint('[AUTO UPDATE CONTACT] Updating contact ${c.name} phone from ${c.phone} to $newPhone');
+                        
+                        // Update saved contact row in database
+                        widget.api.post('update_my_contact', {
+                          'id': c.id?.toString(),
+                          'email': email,
+                          'owner_email': email,
+                          'name': c.name,
+                          'phone': newPhone,
+                          'phone_no': newPhone,
+                          'title': c.title,
+                          'category': c.category,
+                        }).catchError((err) {
+                          debugPrint('Error auto-updating contact DB: $err');
+                        });
+
+                        SessionStore().addNotification(
+                          title: 'Contact Phone Updated',
+                          message: '$userName changed their mobile number. Saved contact "${c.name}" was automatically updated to $newPhone.',
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              debugPrint('Auto-update parse error: $err');
+            }
+          }
+        }
+
         // Sorting A-Z
         parsed.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
@@ -1060,7 +1112,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
 
       setState(() => _loading = true);
       final lightweightProperties = ContactProperty.values.where((p) =>
-        p.name != 'photo' && p.name != 'thumbnail'
+        p.name == 'name' || p.name == 'phones' || p.name == 'organizations'
       ).toSet();
       List<Contact> deviceContacts = await FlutterContacts.getAll(properties: lightweightProperties);
       setState(() => _loading = false);
@@ -1420,7 +1472,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       },
     );
 
-    const int chunkSize = 40;
+    const int chunkSize = 200;
     final email = await _getEffectiveEmail();
 
     final nav = Navigator.of(context, rootNavigator: true);

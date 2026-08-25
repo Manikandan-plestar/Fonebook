@@ -324,53 +324,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
   }
 
   Future<bool> _checkMobileUniqueness(String fullPhone, String email) async {
-    try {
-      final cleanP = fullPhone.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanP.isEmpty) return true;
-
-      final clean10 = cleanP.length >= 10 ? cleanP.substring(cleanP.length - 10) : cleanP;
-      final targetEmail = email.trim().toLowerCase();
-
-      final resList = <dynamic>[];
-      try {
-        final r1 = await widget.api.get('check-contact', {
-          'type': 'search',
-          'query': clean10,
-        });
-        if (r1 is List) resList.addAll(r1);
-      } catch (e) {
-        debugPrint("Check-contact 1 error: $e");
-      }
-
-      try {
-        final r2 = await widget.api.get('check_search_type', {'phone': fullPhone});
-        if (r2 is List) resList.addAll(r2);
-      } catch (e) {
-        debugPrint("Check-search-type 2 error: $e");
-      }
-
-      for (final item in resList) {
-        if (item is Map && item['error'] == null) {
-          final itemPhoneRaw = (item['phone'] ?? item['phone_no'] ?? '').toString();
-          final itemPhoneClean = itemPhoneRaw.replaceAll(RegExp(r'[^0-9]'), '');
-          final itemEmail = (item['email'] ?? item['owner_email'] ?? '').toString().trim().toLowerCase();
-
-          if (itemPhoneClean.isNotEmpty && itemEmail.isNotEmpty) {
-            final item10 = itemPhoneClean.length >= 10 ? itemPhoneClean.substring(itemPhoneClean.length - 10) : itemPhoneClean;
-
-            // If 10-digit phone matches AND belongs to a DIFFERENT email address
-            if (item10 == clean10 && itemEmail != targetEmail) {
-              debugPrint('[UNIQUENESS CHECK FAILED] Phone $clean10 is registered to $itemEmail (current user: $targetEmail)');
-              return false; // Mobile number belongs to another user!
-            }
-          }
-        }
-      }
-      return true;
-    } catch (e) {
-      debugPrint("Error checking mobile uniqueness: $e");
-      return true;
-    }
+    // Mobile number uniqueness check disabled (reverted to old logic)
+    return true;
   }
 
   Future<void> _saveProfile() async {
@@ -390,23 +345,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
       }
 
       final name = _nameCtrl.text.trim();
-      final address = _addressCtrl.text.trim();
-      final state = _stateCtrl.text.trim();
-      final countryName = _countryCtrl.text.trim();
-      final pincode = _pincodeCtrl.text.trim();
       final phoneDigits = _phoneCtrl.text.trim();
       final fullPhone = '${_selectedCountry['dial_code']} $phoneDigits';
-
-      // 1. Check Mobile Uniqueness across DB
-      final isUnique = await _checkMobileUniqueness(fullPhone, email);
-      if (!isUnique) {
-        setState(() {
-          _isSaving = false;
-          _phoneError = 'This mobile number is already registered to another user.';
-        });
-        _formKey.currentState?.validate();
-        return;
-      }
 
       final profileMap = {
         'email': email,
@@ -414,27 +354,17 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
         'name': name,
         'full_name': name,
         'phone': fullPhone,
-        'address': address,
-        'state': state,
-        'country': countryName,
-        'pincode': pincode,
-        'location': address,
       };
 
       final profileJsonStr = jsonEncode(profileMap);
 
-      // 2. Build profile payload targeting app_profile column in my_contacts DB table
+      // Build profile payload containing email, name, and mobile number
       final Map<String, String?> profilePayload = {
         'email': email,
         'owner_email': email,
         'name': name,
         'full_name': name,
         'phone': fullPhone,
-        'address': address,
-        'state': state,
-        'country': countryName,
-        'pincode': pincode,
-        'location': address,
         'category': 'app_profile',
         'type': 'profile',
         'target_field': 'app_profile',
@@ -484,41 +414,18 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
         }
       }
 
-      // Check if phone number changed from _originalPhone to fullPhone
+      /*
+      // NOTIFICATION PROCESS (Commented out for later work)
       final cleanOrig = _originalPhone.replaceAll(RegExp(r'[^0-9]'), '');
       final cleanNew = fullPhone.replaceAll(RegExp(r'[^0-9]'), '');
       if (cleanOrig.isNotEmpty && cleanOrig != cleanNew) {
         final changeMessage = '$name changed their mobile number from $_originalPhone to $fullPhone.';
-        debugPrint('[PHONE CHANGE] Mobile number changed! Broadcasting notification...');
-
-        // 1. Add local notification
         await SessionStore().addNotification(
           title: 'Phone Number Changed',
           message: changeMessage,
         );
-
-        // 2. Broadcast notification to backend for saved contact users
-        try {
-          await widget.api.post('save_my_contact', {
-            'email': email,
-            'owner_email': email,
-            'name': name,
-            'phone': fullPhone,
-            'category': 'notification',
-            'title': 'Phone Number Changed',
-            'app_profile': jsonEncode({
-              'type': 'number_change',
-              'old_phone': _originalPhone,
-              'new_phone': fullPhone,
-              'name': name,
-              'email': email,
-              'message': changeMessage,
-            }),
-          });
-        } catch (e) {
-          debugPrint('[PHONE CHANGE] Error broadcasting notification: $e');
-        }
       }
+      */
 
       _originalPhone = fullPhone;
 
@@ -763,6 +670,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
               readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Email Address',
+                labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
                 prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF6C757D)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
@@ -777,6 +686,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
             controller: _nameCtrl,
             decoration: InputDecoration(
               labelText: 'Full Name',
+              labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
+              floatingLabelBehavior: FloatingLabelBehavior.always,
               hintText: 'Enter your full name',
               prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF6C757D)),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -828,6 +739,8 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
                   },
                   decoration: InputDecoration(
                     labelText: 'Mobile Number',
+                    labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
                     hintText: '$targetLength digit number',
                     counterText: '',
                     errorText: _phoneError,

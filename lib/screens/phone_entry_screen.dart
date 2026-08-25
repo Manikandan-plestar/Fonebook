@@ -36,60 +36,10 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
     setState(() => _loading = true);
 
     try {
-      final targetEmail = widget.email.trim().toLowerCase();
-      final clean10 = number.length >= 10 ? number.substring(number.length - 10) : number;
-
-      final resList = <dynamic>[];
-      try {
-        final r1 = await ApiClient().get('check-contact', {
-          'type': 'search',
-          'query': clean10,
-        });
-        if (r1 is List) resList.addAll(r1);
-      } catch (e) {
-        debugPrint("Phone entry check-contact error: $e");
-      }
-
-      try {
-        final r2 = await ApiClient().get('check_search_type', {'phone': fullPhone});
-        if (r2 is List) resList.addAll(r2);
-      } catch (e) {
-        debugPrint("Phone entry check_search_type error: $e");
-      }
-
-      String? registeredOtherEmail;
-      for (final item in resList) {
-        if (item is Map && item['error'] == null) {
-          final itemPhoneRaw = (item['phone'] ?? item['phone_no'] ?? '').toString();
-          final itemPhoneClean = itemPhoneRaw.replaceAll(RegExp(r'[^0-9]'), '');
-          final itemEmail = (item['email'] ?? item['owner_email'] ?? '').toString().trim().toLowerCase();
-
-          if (itemPhoneClean.isNotEmpty && itemEmail.isNotEmpty) {
-            final item10 = itemPhoneClean.length >= 10 ? itemPhoneClean.substring(itemPhoneClean.length - 10) : itemPhoneClean;
-            if (item10 == clean10 && itemEmail != targetEmail) {
-              registeredOtherEmail = itemEmail;
-              break;
-            }
-          }
-        }
-      }
-
-      if (registeredOtherEmail != null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('This mobile number is already registered to another account.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => AddProfileScreen(email: widget.email, phone: fullPhone)),
+          MaterialPageRoute(builder: (_) => AddProfileScreen(email: widget.email, initialPhone: fullPhone)),
         );
       }
     } catch (e) {

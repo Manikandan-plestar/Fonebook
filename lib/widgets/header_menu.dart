@@ -2,19 +2,9 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/session_store.dart';
 import '../models/user_session.dart';
-import '../models/contact.dart';
 import '../screens/login_screen.dart';
-import '../screens/add_profile_screen.dart';
-import '../screens/keyword_screen.dart';
-import '../screens/visibility_screen.dart';
-import '../screens/reports_screen.dart';
-import '../screens/worldwide_screen.dart';
-import '../screens/promote_screen.dart';
-import '../screens/verification_screen.dart';
 import '../screens/profile_list_screen.dart';
-import '../screens/settings_screen.dart';
 import '../screens/favourites_screen.dart';
-
 import '../screens/app_profile_screen.dart';
 import 'notification_dialog.dart';
 
@@ -59,20 +49,6 @@ class _HeaderMenuState extends State<HeaderMenu> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-          icon: Icon(
-            _hasUnread ? Icons.notifications : Icons.notifications_none_outlined,
-            color: _hasUnread ? const Color(0xFFD7B41A) : Colors.black,
-            size: 24,
-          ),
-          onPressed: () async {
-            await NotificationDialog.show(context);
-            _checkNotifications();
-          },
-        ),
-        const SizedBox(width: 8),
         PopupMenuButton<String>(
           icon: Image.asset('assets/images/three_dots.png', width: 25, height: 30),
           onSelected: (v) async {
