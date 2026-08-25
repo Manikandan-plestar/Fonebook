@@ -668,14 +668,16 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
             TextFormField(
               initialValue: _userEmail,
               readOnly: true,
+              style: const TextStyle(color: Color(0xFF212529), fontSize: 15, fontFamily: 'Poppins'),
               decoration: InputDecoration(
                 labelText: 'Email Address',
                 labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
                 floatingLabelBehavior: FloatingLabelBehavior.always,
-                prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF6C757D)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF6C757D), size: 20),
                 filled: true,
                 fillColor: const Color(0xFFE9ECEF),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               ),
             ),
             const SizedBox(height: 14),
@@ -684,15 +686,18 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
           // 1. Full Name Field
           TextFormField(
             controller: _nameCtrl,
+            style: const TextStyle(color: Color(0xFF212529), fontSize: 15, fontFamily: 'Poppins'),
             decoration: InputDecoration(
               labelText: 'Full Name',
               labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
               floatingLabelBehavior: FloatingLabelBehavior.always,
               hintText: 'Enter your full name',
-              prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF6C757D)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              hintStyle: const TextStyle(color: Color(0xFF6C757D), fontFamily: 'Poppins'),
+              prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF6C757D), size: 20),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: const Color(0xFFF1F3F4),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
             ),
             validator: (v) => (v == null || v.trim().isEmpty) ? 'Full name is required' : null,
           ),
@@ -705,11 +710,10 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
               InkWell(
                 onTap: _showCountryPickerDialog,
                 child: Container(
-                  height: 58,
+                  height: 52,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.grey.shade400),
+                    color: const Color(0xFFF1F3F4),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -717,7 +721,7 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
                       Text(_selectedCountry['flag'] ?? '🇮🇳', style: const TextStyle(fontSize: 18)),
                       const SizedBox(width: 4),
                       Text(_selectedCountry['dial_code'] ?? '+91', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                      const Icon(Icons.arrow_drop_down, size: 18),
+                      const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF6C757D)),
                     ],
                   ),
                 ),
@@ -728,6 +732,7 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
                   maxLength: targetLength,
+                  style: const TextStyle(color: Color(0xFF212529), fontSize: 15, fontFamily: 'Poppins'),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(targetLength),
@@ -742,12 +747,14 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
                     labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
                     floatingLabelBehavior: FloatingLabelBehavior.always,
                     hintText: '$targetLength digit number',
+                    hintStyle: const TextStyle(color: Color(0xFF6C757D), fontFamily: 'Poppins'),
                     counterText: '',
                     errorText: _phoneError,
-                    prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF6C757D)),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF6C757D), size: 20),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: const Color(0xFFF1F3F4),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Enter mobile number';
