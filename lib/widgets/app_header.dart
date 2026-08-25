@@ -89,7 +89,7 @@ class _AppHeaderState extends State<AppHeader> {
               if (!_isSearching)
                 Padding(
                   padding: const EdgeInsets.only(left: 4),
-                  child: Image.asset('assets/images/Small-icon.png', width: 34, height: 34, fit: BoxFit.contain),
+                  child: Image.asset('assets/images/big-icon.png', width: 34, height: 34, fit: BoxFit.contain),
                 ),
 
               if (_isSearching)
