@@ -663,8 +663,243 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
             ),
           ),
         ),
+
+        const SizedBox(height: 14),
+
+        // Delete Account Button
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red.shade700,
+              side: BorderSide(color: Colors.red.shade300, width: 1.2),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _showDeleteAccountConfirmationDialog,
+            icon: const Icon(Icons.delete_forever, size: 20, color: Colors.red),
+            label: const Text(
+              'Delete Account',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Colors.red),
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  void _showDeleteAccountConfirmationDialog() {
+    final confirmationCtrl = TextEditingController();
+    bool isMatch = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Delete Account',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Warning: All Data Will Be Lost!',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.red,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Deleting your account will permanently delete your account profile, all saved contacts, business profile, and all account data. This action is irreversible and data cannot be retrieved.',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 12.5,
+                              color: Color(0xFF495057),
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'To confirm, please type "delete my account" below:',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Color(0xFF212529),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: confirmationCtrl,
+                      autofocus: true,
+                      style: const TextStyle(fontFamily: 'Poppins', fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'delete my account',
+                        hintStyle: TextStyle(fontFamily: 'Poppins', color: Colors.grey.shade400, fontSize: 13),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        final trimmed = val.trim().toLowerCase();
+                        setDialogState(() {
+                          isMatch = (trimmed == 'delete my account');
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.red.shade200,
+                    disabledForegroundColor: Colors.white70,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: isMatch
+                      ? () {
+                          Navigator.pop(ctx);
+                          _performAccountDeletion();
+                        }
+                      : null,
+                  child: const Text(
+                    'Delete Permanently',
+                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _performAccountDeletion() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.red),
+              ),
+              SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Deleting Account...',
+                      style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Please wait while your account is permanently deleted.',
+                      style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      await widget.api.post('delete_account', {
+        'email': _userEmail,
+        'owner_email': _userEmail,
+        'phone': _originalPhone,
+      });
+
+      final elapsed = stopwatch.elapsedMilliseconds;
+      if (elapsed < 2000) {
+        await Future.delayed(Duration(milliseconds: 2000 - elapsed));
+      }
+
+      await SessionStore().clear();
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account and all associated data have been permanently deleted.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      final elapsed = stopwatch.elapsedMilliseconds;
+      if (elapsed < 2000) {
+        await Future.delayed(Duration(milliseconds: 2000 - elapsed));
+      }
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting account: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Widget _buildViewInfoRow(IconData icon, String label, String value) {
