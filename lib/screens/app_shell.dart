@@ -94,9 +94,8 @@ class _AppShellState extends State<AppShell> {
               elevation: 0,
               currentIndex: _index,
               onTap: (i) {
-                if (_index == i) {
-                  _navigatorKeys[i].currentState?.popUntil((route) => route.isFirst);
-                } else {
+                _navigatorKeys[i].currentState?.popUntil((route) => route.isFirst);
+                if (_index != i) {
                   setState(() => _index = i);
                 }
               },

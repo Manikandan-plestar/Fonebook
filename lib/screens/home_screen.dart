@@ -404,11 +404,6 @@ class _HomeScreenState extends State<HomeScreen> {
           category: 'my_contact',
           showContact: 'mwelsf',
         );
-      }).where((c) {
-        if (apiLocation.isNotEmpty && !_matchesSelectedLocation(c, apiLocation)) {
-          return false;
-        }
-        return true;
       }).toList();
 
       List<DirectoryContact> apiResults = rawApiList

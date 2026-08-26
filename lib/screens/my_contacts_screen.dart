@@ -172,28 +172,111 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
 
     if (isAllTab) {
       final email = await _getEffectiveEmail();
+      final isSelectAll = _selectedPhones.length >= _contacts.length;
       final itemsToDelete = _contacts.where((c) => _selectedPhones.contains(c.phone)).toList();
-      for (final item in itemsToDelete) {
-        try {
-          await widget.api.post('delete_my_contact', {
-            'id': item.id?.toString() ?? '',
+      final idsList = itemsToDelete.map((c) => c.id?.toString()).where((id) => id != null && id.isNotEmpty).toList();
+      final phonesList = _selectedPhones.toList();
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Deleting $count Contact${count > 1 ? 's' : ''}...',
+                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Please wait while contacts are being deleted.',
+                        style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final stopwatch = Stopwatch()..start();
+      try {
+        await widget.api.post(
+          'bulk_delete_my_contacts',
+          {
             'email': email,
             'owner_email': email,
-          });
-        } catch (e) {
-          debugPrint("Error deleting selected contact: $e");
-        }
+            'select_all': isSelectAll ? 'true' : 'false',
+            'ids': jsonEncode(idsList),
+            'phones': jsonEncode(phonesList),
+          },
+          timeout: const Duration(seconds: 45),
+        );
+      } catch (e) {
+        debugPrint("Error in bulk delete: $e");
       }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Deleted $count contact(s)'), backgroundColor: Colors.red),
-      );
+
+      final elapsed = stopwatch.elapsedMilliseconds;
+      if (elapsed < 2000) {
+        await Future.delayed(Duration(milliseconds: 2000 - elapsed));
+      }
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Deleted $count contact(s)'), backgroundColor: Colors.red),
+        );
+      }
     } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Text(
+                    'Removing $count contact(s) from $_selectedCategory...',
+                    style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
       final store = SessionStore();
       for (final phone in _selectedPhones) {
         await store.setContactCategory(phone, '');
       }
       if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Removed $count contact(s) from $_selectedCategory')),
       );
@@ -1404,7 +1487,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
             'title': title,
             'phone': cleanP,
             'category': 'my_contact',
-            'type': 'profile',
+            'type': 'contact',
           });
         }
       }
@@ -1434,120 +1517,54 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     }
 
     final int totalToImport = toImport.length;
-    final processedNotifier = ValueNotifier<int>(0);
-    final insertedNotifier = ValueNotifier<int>(0);
-    final duplicatesNotifier = ValueNotifier<int>(initialDuplicates);
-    final failedNotifier = ValueNotifier<int>(0);
-
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (progressCtx) {
-        return AnimatedBuilder(
-          animation: Listenable.merge([processedNotifier, insertedNotifier, duplicatesNotifier, failedNotifier]),
-          builder: (context, _) {
-            final currentProcessed = processedNotifier.value;
-            final totalInserted = insertedNotifier.value;
-            final totalDupes = duplicatesNotifier.value;
-            final totalFailed = failedNotifier.value;
-            final progress = totalToImport > 0 ? (currentProcessed / totalToImport) : 0.0;
-            final percent = (progress * 100).toInt().clamp(0, 100);
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    'Importing Contacts...',
-                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 17),
-                  ),
-                ],
+      builder: (progressCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(5),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: Colors.grey.shade200,
-                      color: const Color(0xFFD7B41A),
-                      minHeight: 10,
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Importing $totalToImport Contact${totalToImport > 1 ? 's' : ''}...',
+                      style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '$currentProcessed / $totalToImport contacts',
-                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 13),
-                      ),
-                      Text(
-                        '$percent%',
-                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF149508), fontSize: 14),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Please wait while contacts are being imported.',
+                      style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
                     ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Successfully Added:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
-                            Text('$totalInserted', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green, fontFamily: 'Poppins')),
-                          ],
-                        ),
-                        if (totalDupes > 0) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Already Existing:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
-                              Text('$totalDupes', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.orange, fontFamily: 'Poppins')),
-                            ],
-                          ),
-                        ],
-                        if (totalFailed > 0) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Failed:', style: TextStyle(fontSize: 13, fontFamily: 'Poppins')),
-                              Text('$totalFailed', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red, fontFamily: 'Poppins')),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          },
-        );
-      },
+            ],
+          ),
+        ),
+      ),
     );
 
-    const int chunkSize = 250;
+    int totalInserted = 0;
+    int totalDuplicates = initialDuplicates;
+    int totalFailed = 0;
+    int totalProcessed = 0;
+    const int chunkSize = 500;
     final nav = Navigator.of(context, rootNavigator: true);
     final messenger = ScaffoldMessenger.of(context);
     final random = Random();
     bool anyBatchSucceeded = false;
+    final stopwatch = Stopwatch()..start();
 
     for (int i = 0; i < toImport.length; i += chunkSize) {
       final end = (i + chunkSize < toImport.length) ? i + chunkSize : toImport.length;
@@ -1592,16 +1609,16 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                 ? chunk.length
                 : inserted;
 
-            insertedNotifier.value += finalInserted;
-            duplicatesNotifier.value += skipped;
-            failedNotifier.value += failed;
-            processedNotifier.value += (finalInserted + skipped + failed);
+            totalInserted += finalInserted;
+            totalDuplicates += skipped;
+            totalFailed += failed;
+            totalProcessed += (finalInserted + skipped + failed);
           } else if (importRes is List) {
-            insertedNotifier.value += importRes.length;
-            processedNotifier.value += importRes.length;
+            totalInserted += importRes.length;
+            totalProcessed += importRes.length;
           } else {
-            insertedNotifier.value += chunk.length;
-            processedNotifier.value += chunk.length;
+            totalInserted += chunk.length;
+            totalProcessed += chunk.length;
           }
 
           batchSuccess = true;
@@ -1614,8 +1631,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
               e.toString().contains('Invalid request');
 
           if (isPermanentError || attempts >= 4) {
-            failedNotifier.value += chunk.length;
-            processedNotifier.value += chunk.length;
+            totalFailed += chunk.length;
+            totalProcessed += chunk.length;
             break;
           }
 
@@ -1631,12 +1648,13 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       await Future.delayed(const Duration(milliseconds: 50));
     }
 
+    final elapsed = stopwatch.elapsedMilliseconds;
+    if (elapsed < 2000) {
+      await Future.delayed(Duration(milliseconds: 2000 - elapsed));
+    }
+
     if (mounted) {
       nav.pop();
-      final totalProcessed = processedNotifier.value;
-      final totalInserted = insertedNotifier.value;
-      final totalDuplicates = duplicatesNotifier.value;
-      final totalFailed = failedNotifier.value;
 
       debugPrint('[IMPORT] Final result: Processed=$totalProcessed, Inserted=$totalInserted, Duplicates=$totalDuplicates, Failed=$totalFailed');
 
@@ -1692,6 +1710,45 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     );
 
     if (confirm == true) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Deleting "${item.name}"...',
+                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Please wait...',
+                        style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final stopwatch = Stopwatch()..start();
       try {
         final email = await _getEffectiveEmail();
         await widget.api.post('delete_my_contact', {
@@ -1699,11 +1756,21 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
           'email': email,
           'owner_email': email,
         });
+        final elapsed = stopwatch.elapsedMilliseconds;
+        if (elapsed < 2000) {
+          await Future.delayed(Duration(milliseconds: 2000 - elapsed));
+        }
         if (!mounted) return;
+        Navigator.of(context, rootNavigator: true).pop();
         messenger.showSnackBar(const SnackBar(content: Text('Contact deleted successfully'), backgroundColor: Colors.green));
         _load();
       } catch (e) {
+        final elapsed = stopwatch.elapsedMilliseconds;
+        if (elapsed < 2000) {
+          await Future.delayed(Duration(milliseconds: 2000 - elapsed));
+        }
         if (!mounted) return;
+        Navigator.of(context, rootNavigator: true).pop();
         messenger.showSnackBar(SnackBar(content: Text('Error deleting contact: $e')));
       }
     }
