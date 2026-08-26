@@ -89,7 +89,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
 
   String get _title {
     switch (widget.mode) {
-      case 'profile': return 'Business Profiles';
+      case 'profile': return 'Business';
       case 'keywords': return 'Keywords';
       case 'verification': return 'Verification';
       case 'promote': return 'Promote';

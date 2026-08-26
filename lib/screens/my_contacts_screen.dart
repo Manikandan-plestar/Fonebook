@@ -121,6 +121,19 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       await store.setContactCategory(phone, finalCategory);
     }
 
+    // Sync category assignment to Server Database
+    try {
+      final email = await _getEffectiveEmail();
+      await widget.api.post('bulk_assign_category', {
+        'email': email,
+        'owner_email': email,
+        'phones': jsonEncode(_selectedPhones.toList()),
+        'category': finalCategory,
+      });
+    } catch (e) {
+      debugPrint("Error syncing category to server: $e");
+    }
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -275,6 +288,20 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       for (final phone in _selectedPhones) {
         await store.setContactCategory(phone, '');
       }
+
+      // Sync removal to Server Database
+      try {
+        final email = await _getEffectiveEmail();
+        await widget.api.post('bulk_assign_category', {
+          'email': email,
+          'owner_email': email,
+          'phones': jsonEncode(_selectedPhones.toList()),
+          'category': '',
+        });
+      } catch (e) {
+        debugPrint("Error syncing category removal to server: $e");
+      }
+
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -519,9 +546,22 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
             unique.add(item);
           }
         }
+        // Auto-discover any categories from server contacts and register them in SessionStore
+        final serverCategories = <String>{};
+        for (final item in unique) {
+          final cat = item.category.trim();
+          if (cat.isNotEmpty && cat.toLowerCase() != 'all' && cat.toLowerCase() != 'others' && cat.toLowerCase() != 'my_contact' && cat.toLowerCase() != 'app_profile') {
+            serverCategories.add(cat);
+          }
+        }
+        for (final sc in serverCategories) {
+          await SessionStore().addCategory(sc);
+        }
+        final updatedCatList = await SessionStore().getCategories();
+
         setState(() {
           _contacts = unique;
-          _categories = ['All', ...catList];
+          _categories = ['All', ...updatedCatList];
           _loading = false;
         });
       } else {

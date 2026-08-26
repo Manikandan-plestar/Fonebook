@@ -1598,6 +1598,56 @@ app.post('/update_my_contact', (req, res) => {
     });
 });
 
+app.post(['/bulk_assign_category', '/update_contact_category', '/assign_contact_category'], (req, res) => {
+    let { owner_email, email, phone, phones, ids, category } = req.body;
+    const userEmail = owner_email || email || 'guest@fonebook.com';
+    const targetCategory = (category || '').trim();
+
+    if (typeof phones === 'string') {
+        try { phones = JSON.parse(phones); } catch (_) { phones = phones.split(',').map(s => s.trim()).filter(Boolean); }
+    }
+    if (typeof ids === 'string') {
+        try { ids = JSON.parse(ids); } catch (_) { ids = ids.split(',').map(s => s.trim()).filter(Boolean); }
+    }
+
+    const phoneSet = new Set();
+    if (phone) phoneSet.add(getCleanPhone(phone));
+    if (Array.isArray(phones)) phones.forEach(p => phoneSet.add(getCleanPhone(p)));
+
+    const idSet = new Set();
+    if (Array.isArray(ids)) ids.forEach(i => idSet.add(String(i)));
+
+    getOwnerContactsArray(userEmail, (err, list) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+
+        const rawList = Array.isArray(list) ? list : [];
+        let updatedCount = 0;
+
+        for (let i = 0; i < rawList.length; i++) {
+            if (isProfileItem(rawList[i])) continue;
+
+            const c = rawList[i];
+            const cleanP = getCleanPhone(c.phone);
+            const matchesPhone = phoneSet.size > 0 && phoneSet.has(cleanP);
+            const matchesId = idSet.size > 0 && idSet.has(String(c.id));
+
+            if (matchesPhone || matchesId) {
+                rawList[i].category = targetCategory;
+                updatedCount++;
+            }
+        }
+
+        saveOwnerContactsArray(userEmail, rawList, (saveErr) => {
+            if (saveErr) return res.status(500).json({ error: 'Error updating categories' });
+            res.status(200).json({
+                status: 'success',
+                message: `Updated category for ${updatedCount} contact(s)`,
+                updated_count: updatedCount
+            });
+        });
+    });
+});
+
 app.post(['/delete_my_contact', '/bulk_delete_my_contacts'], (req, res) => {
     let { id, ids, phone, phones, owner_email, email, select_all, all } = req.body;
     const userEmail = owner_email || email || 'guest@fonebook.com';

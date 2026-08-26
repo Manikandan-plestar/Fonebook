@@ -2,7 +2,7 @@ name: fonebook
 description: "Fone Book is a modern-day global telephone directory app that contains the contacts information of individuals, professionals, organizations and freelancers."
 publish_to: 'none'
 
-version: 1.0.7+44
+version: 1.0.8+45
 
 environment:
   sdk: ^3.5.0
