@@ -51,6 +51,7 @@ class SessionStore extends ChangeNotifier {
     
     // Create a copy with current timestamp
     final contactWithTime = DirectoryContact(
+      id: c.id,
       name: c.name,
       service: c.service,
       phone: c.phone,
@@ -74,8 +75,14 @@ class SessionStore extends ChangeNotifier {
     );
 
     final json = jsonEncode(contactWithTime.toJson());
-    // Remove if already exists to move to top
-    list.removeWhere((item) => DirectoryContact.fromJson(jsonDecode(item)).phone == c.phone);
+    // Remove if already exists to move to top - matching by id if available, else phone
+    list.removeWhere((item) {
+      final parsed = DirectoryContact.fromJson(jsonDecode(item));
+      if (c.id != null && parsed.id != null) {
+        return parsed.id == c.id;
+      }
+      return parsed.phone == c.phone;
+    });
     list.insert(0, json);
     if (list.length > 50) list.removeLast();
     await p.setStringList('history', list);
@@ -93,9 +100,9 @@ class SessionStore extends ChangeNotifier {
     final list = p.getStringList('history') ?? [];
     list.removeWhere((item) {
       final parsed = DirectoryContact.fromJson(jsonDecode(item));
-      final samePhone = parsed.phone == c.phone;
+      final sameId = c.id != null && parsed.id != null ? parsed.id == c.id : parsed.phone == c.phone;
       final sameTime = c.timestamp == null || parsed.timestamp == c.timestamp;
-      return samePhone && sameTime;
+      return sameId && sameTime;
     });
     await p.setStringList('history', list);
     notifyListeners();
@@ -104,8 +111,13 @@ class SessionStore extends ChangeNotifier {
   Future<void> toggleFavourite(DirectoryContact c) async {
     final p = await _prefs;
     final list = p.getStringList('favourites') ?? [];
-    final phone = c.phone;
-    final index = list.indexWhere((e) => DirectoryContact.fromJson(jsonDecode(e)).phone == phone);
+    final index = list.indexWhere((e) {
+      final parsed = DirectoryContact.fromJson(jsonDecode(e));
+      if (c.id != null && parsed.id != null) {
+        return parsed.id == c.id;
+      }
+      return parsed.phone == c.phone;
+    });
     if (index != -1) {
       list.removeAt(index);
     } else {
@@ -123,6 +135,15 @@ class SessionStore extends ChangeNotifier {
 
   bool isFavourite(String phone, List<DirectoryContact> favourites) {
     return favourites.any((e) => e.phone == phone);
+  }
+
+  bool isContactFavourite(DirectoryContact contact, List<DirectoryContact> favourites) {
+    return favourites.any((e) {
+      if (contact.id != null && e.id != null) {
+        return e.id == contact.id;
+      }
+      return e.phone == contact.phone;
+    });
   }
 
   // Category Storage & Management

@@ -270,7 +270,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
       };
 
       try {
-        await widget.api.post('save_publish', {'phone': phone, 'publish': 'no'});
+        await widget.api.post('save_publish', {'id': existingId, 'phone': phone, 'publish': 'no'});
       } catch (_) {}
       try {
         await widget.api.post('savecontacts', deletePayload);
@@ -278,10 +278,8 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
       try {
         await widget.api.post('delete_contact', deletePayload);
       } catch (_) {}
-      try {
-        await widget.api.post('delete_my_contact', deletePayload);
-      } catch (_) {}
 
+      if (existingId.isNotEmpty) DirectoryContact.bust(existingId);
       DirectoryContact.bust(phone);
 
       if (mounted) {
@@ -412,11 +410,12 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
     Widget target;
     switch (widget.mode) {
       case 'profile':
-        target = AddProfileScreen(email: widget.session.email!, phone: p.phone);
+        target = AddProfileScreen(email: widget.session.email!, contact: p, profileId: p.id, phone: p.phone);
         break;
       case 'keywords':
         target = KeywordScreen(
           api: widget.api,
+          id: p.id,
           phone: p.phone,
           name: p.name,
           service: p.service,

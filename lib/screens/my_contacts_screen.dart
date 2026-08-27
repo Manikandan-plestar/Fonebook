@@ -75,6 +75,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     final selectedCat = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           _selectedCategory == 'All' ? 'Assign Category' : 'Move Category',
@@ -156,6 +158,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(isAllTab ? 'Delete Contacts' : 'Remove from $_selectedCategory'),
         content: Text(
@@ -194,6 +198,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -261,6 +267,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -714,9 +722,23 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         ? _selectedCategory
         : (availableCategories.isNotEmpty ? availableCategories.first : 'Family');
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (ctx) {
+      barrierDismissible: true,
+      barrierLabel: 'Add Contact',
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curve = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.90, end: 1.0).animate(curve),
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curve),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (ctx, anim1, anim2) {
         bool saving = false;
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -986,9 +1008,23 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     List<String> availableCategories = List.from(_categories.where((c) => c != 'All'));
     String selectedCategory = (item.category.isNotEmpty && item.category != 'Others') ? item.category : (availableCategories.isNotEmpty ? availableCategories.first : 'Family');
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (ctx) {
+      barrierDismissible: true,
+      barrierLabel: 'Edit Contact',
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curve = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.90, end: 1.0).animate(curve),
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curve),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (ctx, anim1, anim2) {
         bool saving = false;
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -1283,6 +1319,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1307,7 +1344,11 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
 
             return SafeArea(
               child: Container(
-                height: MediaQuery.of(context).size.height * 0.85,
+                height: MediaQuery.of(context).size.height * 0.65,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
@@ -1332,7 +1373,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                         hintText: 'Search contacts...',
                         prefixIcon: const Icon(Icons.search),
                         filled: true,
-                        fillColor: Colors.grey.shade200,
+                        fillColor: const Color(0xFFF1F3F4),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       ),
@@ -1349,7 +1390,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                               }
                             });
                           },
-                          child: const Text('Select All'),
+                          child: const Text(
+                            'Select All', 
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Poppins', fontSize: 14),
+                          ),
                         ),
                         TextButton(
                           onPressed: () {
@@ -1357,7 +1401,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                               selectedIndices.clear();
                             });
                           },
-                          child: const Text('Deselect All'),
+                          child: const Text(
+                            'Deselect All', 
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Poppins', fontSize: 14),
+                          ),
                         ),
                       ],
                     ),
@@ -1377,6 +1424,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
 
                                 return CheckboxListTile(
                                   value: isSelected,
+                                  activeColor: const Color(0xFF4C5B8F),
+                                  checkColor: Colors.white,
                                   title: Text(item.displayName ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
                                   subtitle: Text(job.isNotEmpty ? '${_formatPhoneDisplay(phone)} • $job' : _formatPhoneDisplay(phone)),
                                   onChanged: (val) {
@@ -1398,8 +1447,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                       height: 48,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFD7B41A),
-                          foregroundColor: Colors.black,
+                          backgroundColor: const Color(0xFF4C5B8F),
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: selectedIndices.isEmpty
@@ -1913,6 +1962,10 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                         },
                       ),
                       PopupMenuButton<String>(
+                        color: Colors.white,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         icon: const Icon(Icons.more_vert, color: Colors.white),
                         onSelected: (v) {
                           if (v == 'category') {

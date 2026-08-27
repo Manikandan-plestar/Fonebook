@@ -6,6 +6,7 @@ import '../widgets/app_header.dart';
 
 class KeywordScreen extends StatefulWidget {
   final ApiClient api;
+  final String? id;
   final String phone;
   final String name;
   final String service;
@@ -16,6 +17,7 @@ class KeywordScreen extends StatefulWidget {
   const KeywordScreen({
     super.key, 
     required this.api, 
+    this.id,
     required this.phone, 
     required this.name,
     required this.service,
@@ -95,9 +97,13 @@ class _KeywordScreenState extends State<KeywordScreen> {
     
     setState(() => _saving = true);
     try {
-      await widget.api.post('savetags', {'tags': tagsString, 'phone': widget.phone});
+      await widget.api.post('savetags', {
+        if (widget.id != null && widget.id!.isNotEmpty) 'id': widget.id!,
+        'tags': tagsString, 
+        'phone': widget.phone,
+      });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keywrods updated successfully'), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keywords updated successfully'), backgroundColor: Colors.green));
       Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -147,7 +153,7 @@ class _KeywordScreenState extends State<KeywordScreen> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6C757D),
+                              color: const Color(0xFF4C5B8F),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(Icons.tag, color: Colors.white, size: 24),
@@ -209,7 +215,7 @@ class _KeywordScreenState extends State<KeywordScreen> {
                           child: const Text('+ Add', style: TextStyle(
                             fontSize: 15, 
                             fontWeight: FontWeight.bold, 
-                            color: Color(0xFF6C757D),
+                            color: Color(0xFF4C5B8F),
                             fontFamily: 'Poppins',
                           )),
                         ),
@@ -232,7 +238,7 @@ class _KeywordScreenState extends State<KeywordScreen> {
                       child: ElevatedButton(
                         onPressed: _saving ? null : _save,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6C757D),
+                          backgroundColor: const Color(0xFF4C5B8F),
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -258,7 +264,7 @@ class _KeywordScreenState extends State<KeywordScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF6C757D),
+        color: const Color(0xFF4C5B8F),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(

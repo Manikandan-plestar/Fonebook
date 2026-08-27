@@ -22,7 +22,18 @@ class AddProfileScreen extends StatefulWidget {
   final String email;
   final String? phone;
   final String? initialPhone;
-  const AddProfileScreen({super.key, required this.email, this.phone, this.initialPhone});
+  final DirectoryContact? contact;
+  final String? profileId;
+
+  const AddProfileScreen({
+    super.key, 
+    required this.email, 
+    this.phone, 
+    this.initialPhone,
+    this.contact,
+    this.profileId,
+  });
+
   @override
   State<AddProfileScreen> createState() => _AddProfileScreenState();
 }
@@ -52,6 +63,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   Uint8List? _imageBytes;
   Uint8List? _existingImageBytes;
   bool _isLoading = false;
+  bool _isFetchingAddress = false;
   bool _showMobile = true;
   bool _showWhatsapp = true;
   String _whoContact = 'international';
@@ -62,17 +74,18 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   @override
   void initState() {
     super.initState();
+    final initialNum = widget.contact?.phone ?? widget.initialPhone ?? widget.phone;
     _nameController = TextEditingController();
-    _phoneController = TextEditingController(text: widget.initialPhone ?? widget.phone);
+    _phoneController = TextEditingController(text: initialNum);
     _titleController = TextEditingController();
     _aboutController = TextEditingController();
-    _wpController = TextEditingController(text: widget.initialPhone ?? widget.phone);
+    _wpController = TextEditingController(text: initialNum);
     _landlineController = TextEditingController();
     _skypeController = TextEditingController();
     
     _locationController = TextEditingController();
     
-    if (widget.phone != null && widget.initialPhone == null) {
+    if (widget.contact != null || widget.profileId != null || (widget.phone != null && widget.initialPhone == null)) {
       _loadProfile();
     }
   }
@@ -80,84 +93,98 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
-      final res = await _api.get('check_search_type1', {'email': widget.email});
-      if (res is List && res.isNotEmpty) {
-        DirectoryContact p;
-        if (widget.phone != null) {
+      DirectoryContact p;
+      if (widget.contact != null) {
+        p = widget.contact!;
+      } else {
+        final res = await _api.get('check_search_type1', {'email': widget.email});
+        if (res is List && res.isNotEmpty) {
           final list = res.map((e) => DirectoryContact.fromJson(e)).toList();
-          final target = widget.phone!.replaceAll(RegExp(r'[^0-9]'), '');
-          p = list.firstWhere(
-            (e) => e.phone.replaceAll(RegExp(r'[^0-9]'), '') == target, 
-            orElse: () => list.first
-          );
+          final targetId = widget.profileId;
+          if (targetId != null && targetId.isNotEmpty) {
+            p = list.firstWhere(
+              (e) => e.id == targetId,
+              orElse: () => list.first,
+            );
+          } else if (widget.phone != null) {
+            final target = widget.phone!.replaceAll(RegExp(r'[^0-9]'), '');
+            p = list.firstWhere(
+              (e) => e.phone.replaceAll(RegExp(r'[^0-9]'), '') == target, 
+              orElse: () => list.first,
+            );
+          } else {
+            p = DirectoryContact.fromJson(res[0]);
+          }
         } else {
-          p = DirectoryContact.fromJson(res[0]);
+          setState(() => _isLoading = false);
+          return;
         }
+      }
         
-        final allCountries = await LocationService.getCountries();
-        csc.Country? countryObj;
-        csc.State? stateObj;
-        csc.City? cityObj;
+      final allCountries = await LocationService.getCountries();
+      csc.Country? countryObj;
+      csc.State? stateObj;
+      csc.City? cityObj;
 
-        // Fallback location parsing
-        String? countryName, stateName, cityName;
-        if (p.state != null && p.state!.isNotEmpty && p.city != null && p.city!.isNotEmpty) {
-           stateName = p.state;
-           cityName = p.city;
-           if (p.location != null && p.location!.isNotEmpty) {
-              final parts = p.location!.split(',').map((e) => e.trim()).toList();
-              if (parts.isNotEmpty) countryName = parts.last;
-           }
-        } else if (p.location != null && p.location!.isNotEmpty) {
-          final parts = p.location!.split(',').map((e) => e.trim()).toList();
-          if (parts.length >= 3) {
-            cityName = parts[0];
-            stateName = parts[1];
-            countryName = parts[2];
-          } else if (parts.isNotEmpty) {
-            countryName = parts.last;
+      // Fallback location parsing
+      String? countryName, stateName, cityName;
+      if (p.state != null && p.state!.isNotEmpty && p.city != null && p.city!.isNotEmpty) {
+         stateName = p.state;
+         cityName = p.city;
+         if (p.location != null && p.location!.isNotEmpty) {
+            final parts = p.location!.split(',').map((e) => e.trim()).toList();
+            if (parts.isNotEmpty) countryName = parts.last;
+         }
+      } else if (p.location != null && p.location!.isNotEmpty) {
+        final parts = p.location!.split(',').map((e) => e.trim()).toList();
+        if (parts.length >= 3) {
+          cityName = parts[0];
+          stateName = parts[1];
+          countryName = parts[2];
+        } else if (parts.isNotEmpty) {
+          countryName = parts.last;
+        }
+      }
+
+      if (countryName != null) {
+        for (var c in allCountries) {
+          if (c.name == countryName) {
+            countryObj = c;
+            break;
           }
         }
+      }
 
-        if (countryName != null) {
-          for (var c in allCountries) {
-            if (c.name == countryName) {
-              countryObj = c;
-              break;
-            }
+      if (countryObj != null && stateName != null) {
+        final allStates = await LocationService.getStates(countryObj.isoCode);
+        for (var s in allStates) {
+          if (s.name == stateName) {
+            stateObj = s;
+            break;
           }
         }
+      }
 
-        if (countryObj != null && stateName != null) {
-          final allStates = await LocationService.getStates(countryObj.isoCode);
-          for (var s in allStates) {
-            if (s.name == stateName) {
-              stateObj = s;
-              break;
-            }
+      if (countryObj != null && stateObj != null && cityName != null) {
+        final allCities = await LocationService.getCities(countryObj.isoCode, stateObj.isoCode);
+        for (var c in allCities) {
+          if (c.name == cityName) {
+            cityObj = c;
+            break;
           }
         }
+      }
 
-        if (countryObj != null && stateObj != null && cityName != null) {
-          final allCities = await LocationService.getCities(countryObj.isoCode, stateObj.isoCode);
-          for (var c in allCities) {
-            if (c.name == cityName) {
-              cityObj = c;
-              break;
-            }
-          }
-        }
-
-        setState(() {
-          _existingProfile = p;
-          _country = countryObj;
-          _state = stateObj;
-          _city = cityObj;
-          
-          _locationController.text = p.location ?? '';
-          _nameController.text = p.name;
-          _phoneController.text = p.phone;
-          _titleController.text = p.service;
+      setState(() {
+        _existingProfile = p;
+        _country = countryObj;
+        _state = stateObj;
+        _city = cityObj;
+        
+        _locationController.text = p.location ?? '';
+        _nameController.text = p.name;
+        _phoneController.text = p.phone;
+        _titleController.text = p.service;
           _aboutController.text = p.about ?? '';
           _wpController.text = p.whatsapp ?? p.phone;
           _landlineController.text = p.landline ?? '';
@@ -216,7 +243,6 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
             if (_contactControllers.isEmpty) _contactControllers.add({'name': TextEditingController(), 'val': TextEditingController()});
           }
         });
-      }
     } catch (e) {
       debugPrint("Load profile error: $e");
     }
@@ -238,7 +264,11 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     final phone = _phoneController.text.trim();
     if (phone.isNotEmpty) {
       final showStr = '${_showMobile ? 'm' : ''}${_showWhatsapp ? 'w' : ''}';
-      await _api.post('save_show', {'phone': phone, 'show': showStr});
+      await _api.post('save_show', {
+        if (_existingProfile?.id != null && _existingProfile!.id!.isNotEmpty) 'id': _existingProfile!.id!,
+        'phone': phone, 
+        'show': showStr
+      });
     }
   }
 
@@ -246,7 +276,11 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     setState(() => _whoContact = val);
     final phone = _phoneController.text.trim();
     if (phone.isNotEmpty) {
-      await _api.post('save_access', {'phone': phone, 'who_contact': val});
+      await _api.post('save_access', {
+        if (_existingProfile?.id != null && _existingProfile!.id!.isNotEmpty) 'id': _existingProfile!.id!,
+        'phone': phone, 
+        'who_contact': val
+      });
     }
   }
 
@@ -288,17 +322,17 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFCBCBCB),
+        color: const Color(0xFF4C5B8F),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(text, style: const TextStyle(color: Color(0xFF232323), fontSize: 14, fontFamily: 'Poppins', fontWeight: FontWeight.w500)),
+          Text(text, style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'Poppins', fontWeight: FontWeight.w500)),
           const SizedBox(width: 8),
           InkWell(
             onTap: () => _removeTag(text),
-            child: const Text('X', style: TextStyle(color: Color(0xFF232323), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+            child: const Text('X', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
           ),
         ],
       ),
@@ -306,12 +340,12 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   }
 
   Future<void> _getAddress() async {
-    setState(() => _isLoading = true);
+    setState(() => _isFetchingAddress = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enable GPS.')));
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isFetchingAddress = false);
         return;
       }
 
@@ -320,7 +354,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location denied.')));
-          setState(() => _isLoading = false);
+          if (mounted) setState(() => _isFetchingAddress = false);
           return;
         }
       }
@@ -351,19 +385,20 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           cityObj = cities.firstWhere((c) => c.name == locality, orElse: () => cities.first);
         }
 
-        setState(() {
-          _locationController.text = fullAddress;
-          _country = countryObj;
-          _state = stateObj;
-          _city = cityObj;
-        });
-
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location fetched from GPS')));
+        if (mounted) {
+          setState(() {
+            _locationController.text = fullAddress;
+            _country = countryObj;
+            _state = stateObj;
+            _city = cityObj;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location fetched from GPS')));
+        }
       }
     } catch (e) {
       debugPrint("GPS Error: $e");
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isFetchingAddress = false);
     }
   }
 
@@ -403,7 +438,11 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           .where((e) => e.split(':')[0].isNotEmpty && e.split(':')[1].isNotEmpty)
           .join(', ');
 
+      final existingId = _existingProfile?.id ?? widget.contact?.id ?? widget.profileId;
+      final isEditing = existingId != null && existingId.isNotEmpty;
+
       final Map<String, String?> body = {
+        if (isEditing) 'id': existingId,
         'name': name,
         'phone': phone,
         'phone1': widget.phone ?? phone,
@@ -431,18 +470,19 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
 
       if (imageBase64 != null) {
         body['imagebolb'] = imageBase64;
-        body['filename'] = "${name}_${phone.replaceAll('+', '')}.jpg";
+        final fileSuffix = isEditing ? '_$existingId' : '_${DateTime.now().millisecondsSinceEpoch}';
+        body['filename'] = "${name}_${phone.replaceAll('+', '')}$fileSuffix.jpg";
       }
 
       final Map<String, String> finalBody = {};
       body.forEach((key, value) { if (value != null) finalBody[key] = value; });
 
-      final endpoint = widget.phone != null ? 'savecontacts' : 'savecontacts1';
+      final endpoint = isEditing ? 'savecontacts' : 'savecontacts1';
       final res = await _api.post(endpoint, finalBody);
       if (res.toString().toLowerCase().contains('success')) {
         final showStr = '${_showMobile ? 'm' : ''}${_showWhatsapp ? 'w' : ''}';
-        unawaited(_api.post('save_show', {'phone': phone, 'show': showStr}));
-        unawaited(_api.post('save_access', {'phone': phone, 'who_contact': _whoContact}));
+        unawaited(_api.post('save_show', {'id': existingId ?? '', 'phone': phone, 'show': showStr}));
+        unawaited(_api.post('save_access', {'id': existingId ?? '', 'phone': phone, 'who_contact': _whoContact}));
 
         final currentSession = await _store.read();
         final session = UserSession(
@@ -454,12 +494,13 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           image: _image != null ? 'updated' : currentSession.image,
           premium: currentSession.premium || (_existingProfile?.verified == 1),
         );
+        if (existingId != null) DirectoryContact.bust(existingId);
         DirectoryContact.bust(phone);
         await _store.save(session);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(widget.phone != null ? 'Profile updated successfully' : 'Profile created successfully'),
+              content: Text(isEditing ? 'Profile updated successfully' : 'Profile created successfully'),
               backgroundColor: Colors.green,
             ),
           );
@@ -556,7 +597,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         final phone = _phoneController.text.trim();
         final rawPhone = widget.phone ?? phone;
         final targetPhone = widget.phone != null && widget.phone!.isNotEmpty ? widget.phone! : phone;
-        final existingId = _existingProfile?.id ?? '';
+        final existingId = _existingProfile?.id ?? widget.contact?.id ?? widget.profileId ?? '';
 
         final Map<String, String> deletePayload = {
           if (existingId.isNotEmpty) 'id': existingId,
@@ -575,7 +616,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
 
         // 1. Update DB publish status to 'no' via save_publish and savecontacts
         try {
-          final res = await _api.post('save_publish', {'phone': targetPhone, 'publish': 'no'});
+          final res = await _api.post('save_publish', {'id': existingId, 'phone': targetPhone, 'publish': 'no'});
           debugPrint("save_publish res: $res");
         } catch (e) {
           debugPrint("save_publish error: $e");
@@ -587,20 +628,15 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           debugPrint("savecontacts error: $e");
         }
 
-        // 2. Post to delete_contact and delete_my_contact to remove permanently from DB table
+        // 2. Post to delete_contact to remove permanently from DB table
         try {
           final res = await _api.post('delete_contact', deletePayload);
           debugPrint("delete_contact res: $res");
         } catch (e) {
           debugPrint("delete_contact error: $e");
         }
-        try {
-          final res = await _api.post('delete_my_contact', deletePayload);
-          debugPrint("delete_my_contact res: $res");
-        } catch (e) {
-          debugPrint("delete_my_contact error: $e");
-        }
 
+        if (existingId.isNotEmpty) DirectoryContact.bust(existingId);
         DirectoryContact.bust(phone);
         DirectoryContact.bust(rawPhone);
         DirectoryContact.bust(targetPhone);
@@ -705,7 +741,25 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                     _buildTextField(_nameController, _getLabel('name')),
                     _buildTextField(_titleController, _getLabel('title')),
                     _buildTextField(_aboutController, _getLabel('about'), maxLines: 5, inputFormatters: [LengthLimitingTextInputFormatter(600)]),
-                    _buildTextField(_locationController, 'Business location (GPS Only)', isReadOnly: true, maxLines: 3),
+                    _buildTextField(
+                      _locationController, 
+                      'Business location (GPS Only)', 
+                      isReadOnly: true, 
+                      maxLines: 3,
+                      suffixIcon: _isFetchingAddress
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4C5B8F)),
+                                ),
+                              ),
+                            )
+                          : null,
+                    ),
                     
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
@@ -713,21 +767,61 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           InkWell(
-                            onTap: _getAddress,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.location_on, color: Color(0xFF495057), size: 17),
-                                SizedBox(width: 4),
-                                Text('Get Address', 
-                                               style: TextStyle(color: Color(0xFF343A40), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins')),
-                              ],
+                            onTap: _isFetchingAddress ? null : _getAddress,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_isFetchingAddress) ...[
+                                    const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4C5B8F)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Retrieving Address...', 
+                                      style: TextStyle(
+                                        color: Color(0xFF4C5B8F), 
+                                        fontWeight: FontWeight.bold, 
+                                        fontSize: 15, 
+                                        fontFamily: 'Poppins',
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const Icon(Icons.location_on, color: Color(0xFF495057), size: 17),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'Get Address', 
+                                      style: TextStyle(
+                                        color: Color(0xFF343A40), 
+                                        fontWeight: FontWeight.bold, 
+                                        fontSize: 15, 
+                                        fontFamily: 'Poppins',
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                           InkWell(
-                            onTap: () => setState(() => _locationController.clear()),
-                            child: const Text('Clear ', 
-                                           style: TextStyle(color: Color(0xFF495057), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins', decoration: TextDecoration.none)),
+                            onTap: _isFetchingAddress ? null : () => setState(() => _locationController.clear()),
+                            child: Text(
+                              'Clear', 
+                              style: TextStyle(
+                                color: _isFetchingAddress ? Colors.grey : const Color(0xFF495057), 
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 15, 
+                                fontFamily: 'Poppins', 
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -858,13 +952,13 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                Expanded(
+                                 Expanded(
                                   child: SizedBox(
                                     height: 52,
                                     child: ElevatedButton(
                                       onPressed: _isLoading ? null : _save,
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF6C757D),
+                                        backgroundColor: const Color(0xFF4C5B8F),
                                         foregroundColor: Colors.white,
                                         elevation: 0,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -890,13 +984,17 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                               child: ElevatedButton(
                                 onPressed: _isLoading ? null : _save,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF6C757D),
+                                  backgroundColor: const Color(0xFF4C5B8F),
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 ),
                                 child: _isLoading 
-                                    ? const CircularProgressIndicator(color: Color(0xFF272000)) 
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                      )
                                     : const Text('Add', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
                               ),
                             ),
@@ -920,6 +1018,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     List<TextInputFormatter>? inputFormatters,
     int maxLines = 1,
     IconData? prefixIcon,
+    Widget? suffixIcon,
   }) {
     Widget iconWidget;
     final hLower = hint.toLowerCase();
@@ -960,6 +1059,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           labelStyle: const TextStyle(color: Color(0xFF343A40), fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16.5),
           floatingLabelBehavior: FloatingLabelBehavior.always,
           prefixIcon: iconWidget,
+          suffixIcon: suffixIcon,
           hintText: hint,
           hintStyle: const TextStyle(color: Color(0xFF6C757D), fontFamily: 'Poppins'),
           filled: true,

@@ -42,6 +42,7 @@ class _VisibilityScreenState extends State<VisibilityScreen> {
 
   void _saveShow() async {
     await widget.api.post('save_show', {
+      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
       'phone': widget.phone,
       'show': '${m ? 'm' : ''}${w ? 'w' : ''}${e ? 'e' : ''}${l ? 'l' : ''}${s ? 's' : ''}${f ? 'f' : ''}'
     });
@@ -53,6 +54,7 @@ class _VisibilityScreenState extends State<VisibilityScreen> {
   void _saveWho(String val) async {
     setState(() => _whoContact = val);
     await widget.api.post('save_access', {
+      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
       'phone': widget.phone,
       'who_contact': val,
     });
@@ -69,7 +71,11 @@ class _VisibilityScreenState extends State<VisibilityScreen> {
       setState(() => pub = false);
       return;
     }
-    await widget.api.post('save_publish', {'phone': widget.phone, 'publish': v ? 'yes' : 'no'});
+    await widget.api.post('save_publish', {
+      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
+      'phone': widget.phone, 
+      'publish': v ? 'yes' : 'no'
+    });
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated successfully'), backgroundColor: Colors.green, duration: Duration(seconds: 1)));
     }

@@ -57,6 +57,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
         final newBalStr = newBal.toStringAsFixed(2);
 
         await _api.post('savepriority', {
+          if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
           'phone': widget.contact.phone,
           'priority_amount': newBalStr,
           'priority': '0',
@@ -93,8 +94,12 @@ class _PromoteScreenState extends State<PromoteScreen> {
 
   Future<void> _loadStatus() async {
     try {
-      // ALWAYS identify balance strictly by widget.contact.phone (unique profile identifier)
-      final balRes = await _api.get('check-priority', {'phone': widget.contact.phone});
+      // Prioritize contact ID if available, otherwise phone
+      final queryParams = <String, String>{
+        if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
+        'phone': widget.contact.phone,
+      };
+      final balRes = await _api.get('check-priority', queryParams);
       
       String foundBal = '0.00';
       if (balRes is List && balRes.isNotEmpty) {
@@ -107,6 +112,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
         if (currentBal > 0 && dbPriority == '1') {
           isProm = true;
           await _api.post('savepriority', {
+            if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
             'phone': widget.contact.phone,
             'priority_amount': foundBal,
             'priority': '0',
@@ -114,6 +120,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
         } else if (currentBal <= 0 && dbPriority == '0') {
           isProm = false;
           await _api.post('savepriority', {
+            if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
             'phone': widget.contact.phone,
             'priority_amount': '0.00',
             'priority': '1',
@@ -153,6 +160,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
     setState(() => _isPromoting = value);
     final messenger = ScaffoldMessenger.of(context);
     await _api.post('savepriority', {
+      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
       'phone': widget.contact.phone,
       'priority_amount': _balance,
       'priority': value ? '0' : '1',
@@ -171,6 +179,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
   Future<void> _updateSearchType(String type) async {
     setState(() => _searchType = type);
     await _api.post('save_search_type1', {
+      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
       'phone': widget.contact.phone,
       'type': type,
     });
@@ -181,6 +190,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
 
   Future<void> _savePromote() async {
     await _api.post('savepromote', {
+      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
       'phone': widget.contact.phone,
       'international': _isInternational ? 'yes' : 'no',
       'country': _selectedCountry,
@@ -237,7 +247,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6C757D),
+                              color: const Color(0xFF4C5B8F),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(Icons.campaign, color: Colors.white, size: 26),
@@ -269,7 +279,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF6C757D),
+                        color: const Color(0xFF4C5B8F),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Column(

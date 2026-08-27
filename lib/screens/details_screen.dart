@@ -41,10 +41,14 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
   void _load() async {
     _session = await _store.read();
     final favs = await _store.getFavourites();
-    _isFav = favs.any((e) => e.phone == widget.contact.phone);
+    _isFav = _store.isContactFavourite(widget.contact, favs);
 
     try {
-      final data = await ApiClient().get('check_search_type', {'phone': widget.contact.phone});
+      final queryParams = <String, String>{
+        if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
+        'phone': widget.contact.phone,
+      };
+      final data = await ApiClient().get('check_search_type', queryParams);
       if (data != null && data is List && data.isNotEmpty) {
         setState(() {
           _fullContact = DirectoryContact.fromJson(data[0]);
@@ -228,6 +232,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                                   try {
                                     await _store.toggleFavourite(c);
                                     await ApiClient().post('addfavourite', {
+                                      if (c.id != null && c.id!.isNotEmpty) 'id': c.id!,
                                       'phone_no': c.phone,
                                       'count': action == 'add' ? "1" : "0",
                                     });

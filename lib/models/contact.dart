@@ -67,8 +67,8 @@ class DirectoryContact {
   });
 
   static final Map<String, int> _sessionBusters = {};
-  static void bust(String phone) {
-    _sessionBusters[phone] = DateTime.now().millisecondsSinceEpoch;
+  static void bust(String key) {
+    _sessionBusters[key] = DateTime.now().millisecondsSinceEpoch;
   }
 
   String get imageUrl {
@@ -76,7 +76,7 @@ class DirectoryContact {
     final base = image!.startsWith('http') ? image! : '${_assetBase}uploads/$image';
     
     final dbVersion = timestamp?.replaceAll(RegExp(r'[^0-9]'), '') ?? '';
-    final localVersion = _sessionBusters[phone] ?? 0;
+    final localVersion = _sessionBusters[id ?? phone] ?? _sessionBusters[phone] ?? 0;
 
     return '$base?v=$dbVersion&s=$localVersion';
   }

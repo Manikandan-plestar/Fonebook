@@ -197,7 +197,7 @@ db.connect((err) => {
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 app.post('/savecontacts', (req, res) => {
-    var { name, phone, phone1, email, service, location, location1, state, city, imagebolb, filename, about, keyword, landlineno, wpno, skypeno, category, output, services, publish, owner_email } = req.body;
+    var { id, name, phone, phone1, email, service, location, location1, state, city, imagebolb, filename, about, keyword, landlineno, wpno, skypeno, category, output, services, publish, owner_email } = req.body;
     if (services == null) {
         services = "";
     }
@@ -210,65 +210,107 @@ app.post('/savecontacts', (req, res) => {
     const safePhone = sanitize(phone || 'unknown');
     var uniqueFilename = "";
     if (imagebolb && imagebolb.length > 0) {
-        uniqueFilename = `${safeName}_${safePhone}.jpg`;
+        const fileSuffix = id ? `_${id}` : `_${Date.now()}`;
+        uniqueFilename = `${safeName}_${safePhone}${fileSuffix}.jpg`;
         imageBuffer = Buffer.from(imagebolb, 'base64');
     }
-    const selectQuery = "SELECT * FROM contacts WHERE phone_no = ?";
-    db.query(selectQuery, [phone1], (selectErr, selectResult) => {
-        if (selectErr) {
-            console.error(selectErr);
-            res.status(500).send('Error checking phone number');
-        } else {
-            if (selectResult.length > 0) {
-                var updateQuery = "UPDATE contacts SET name = ?,phone_no=?, service = ?,email=?, location = ?,location1=?,state=?, city=?, image=?,about=?,keywords=?, landlineno=?,  wpno=?, skypeno=?, category=?, phonenos=?, owner_email=?, services=?, deleted_contact=0 WHERE phone_no = ?";
-                var updateValues = [name, phone, service, email, location, location1, state, city, uniqueFilename, about, keyword, landlineno, wpno, skypeno, category, output, owner_email, services, phone1];
 
+    if (id) {
+        // Update specific profile by ID
+        const checkSql = "SELECT * FROM contacts WHERE id = ?";
+        db.query(checkSql, [id], (selectErr, selectResult) => {
+            if (selectErr) {
+                console.error(selectErr);
+                return res.status(500).send('Error checking profile ID');
+            }
+            if (selectResult.length > 0) {
+                const finalImage = uniqueFilename || selectResult[0].image || '';
+                var updateQuery = "UPDATE contacts SET name = ?, phone_no = ?, service = ?, email = ?, location = ?, location1 = ?, state = ?, city = ?, image = ?, about = ?, keywords = ?, landlineno = ?, wpno = ?, skypeno = ?, category = ?, phonenos = ?, owner_email = ?, services = ?, deleted_contact = 0 WHERE id = ?";
+                var updateValues = [name, phone, service, email, location, location1, state, city, finalImage, about, keyword, landlineno, wpno, skypeno, category, output, owner_email, services, id];
 
                 db.query(updateQuery, updateValues, (updateErr, updateResult) => {
                     if (updateErr) {
                         console.error(updateErr);
-                        res.status(500).send('Error updating phone number');
-                    } else {
-                        console.log('Phone number updated successfully');
-                        res.status(200).send('Phone number saved successfully');
-                        if (imageBuffer != null) {
-                            const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
-                            fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
-                                if (err) {
-                                    console.error(err);
-                                } else {
-                                    console.log('Image saved successfully');
-                                }
-                            });
-                        }
+                        return res.status(500).send('Error updating profile');
+                    }
+                    console.log(`Business profile ${id} updated successfully`);
+                    res.status(200).json({ status: 'success', id: id, message: 'Phone number saved successfully' });
+                    if (imageBuffer != null && uniqueFilename) {
+                        const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                        fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
+                            if (err) console.error(err);
+                            else console.log('Image saved successfully');
+                        });
                     }
                 });
             } else {
-                const insertQuery = "INSERT INTO contacts (name, phone_no,email, service, location,location1,state, city, image, keywords,about, landlineno, wpno, skypeno,  category, phonenos, publish, owner_email,services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?)";
-                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish, owner_email, services];
+                // ID provided but not found, insert as new profile
+                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
 
                 db.query(insertQuery, insertValues, (insertErr, insertResult) => {
                     if (insertErr) {
                         console.error(insertErr);
-                        res.status(500).send('Error submitting report');
-                    } else {
-                        console.log('Phone number saved successfully');
-                        res.status(200).send('Phone number saved successfully');
-                        if (imageBuffer != null) {
-                            const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
-                            fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
-                                if (err) {
-                                    console.error(err);
-                                } else {
-                                    console.log('Image saved successfully');
-                                }
-                            });
-                        }
+                        return res.status(500).send('Error creating profile');
+                    }
+                    console.log(`New profile created with ID ${insertResult.insertId}`);
+                    res.status(200).json({ status: 'success', id: insertResult.insertId, message: 'Phone number saved successfully' });
+                    if (imageBuffer != null && uniqueFilename) {
+                        const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                        fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
+                            if (err) console.error(err);
+                        });
                     }
                 });
             }
-        }
-    });
+        });
+    } else {
+        // Fallback: If no ID provided
+        const selectQuery = "SELECT * FROM contacts WHERE phone_no = ? AND deleted_contact = 0";
+        db.query(selectQuery, [phone1], (selectErr, selectResult) => {
+            if (selectErr) {
+                console.error(selectErr);
+                return res.status(500).send('Error checking phone number');
+            }
+            if (selectResult.length > 0) {
+                const targetId = selectResult[0].id;
+                const finalImage = uniqueFilename || selectResult[0].image || '';
+                var updateQuery = "UPDATE contacts SET name = ?, phone_no = ?, service = ?, email = ?, location = ?, location1 = ?, state = ?, city = ?, image = ?, about = ?, keywords = ?, landlineno = ?, wpno = ?, skypeno = ?, category = ?, phonenos = ?, owner_email = ?, services = ?, deleted_contact = 0 WHERE id = ?";
+                var updateValues = [name, phone, service, email, location, location1, state, city, finalImage, about, keyword, landlineno, wpno, skypeno, category, output, owner_email, services, targetId];
+
+                db.query(updateQuery, updateValues, (updateErr, updateResult) => {
+                    if (updateErr) {
+                        console.error(updateErr);
+                        return res.status(500).send('Error updating profile');
+                    }
+                    res.status(200).json({ status: 'success', id: targetId, message: 'Phone number saved successfully' });
+                    if (imageBuffer != null && uniqueFilename) {
+                        const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                        fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
+                            if (err) console.error(err);
+                        });
+                    }
+                });
+            } else {
+                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
+
+                db.query(insertQuery, insertValues, (insertErr, insertResult) => {
+                    if (insertErr) {
+                        console.error(insertErr);
+                        return res.status(500).send('Error submitting report');
+                    }
+                    res.status(200).json({ status: 'success', id: insertResult.insertId, message: 'Phone number saved successfully' });
+                    if (imageBuffer != null && uniqueFilename) {
+                        const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                        fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
+                            if (err) console.error(err);
+                        });
+                    }
+                });
+            }
+        });
+    }
 });
 app.post('/receiveData', (req, res) => {
     const receivedData = Object.values(req.body.data);
@@ -335,13 +377,9 @@ app.post('/receiveData', (req, res) => {
 });
 
 app.post('/savecontacts1', (req, res) => {
-    var { name, phone, email, service, location, location1, state, city, imagebolb, filename, about, keyword, landlineno, wpno, skypeno, category, output, services, publish, owner_email } = req.body;
+    var { id, name, phone, email, service, location, location1, state, city, imagebolb, filename, about, keyword, landlineno, wpno, skypeno, category, output, services, publish, owner_email } = req.body;
     if (services == null) {
         services = "";
-    }
-    let phone1;
-    if (phone1 == null || phone1 == "") {
-        phone1 = phone;
     }
     let imageBuffer = null;
     const sanitize = (str) => str.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
@@ -349,81 +387,78 @@ app.post('/savecontacts1', (req, res) => {
     const safePhone = sanitize(phone || 'unknown');
     var uniqueFilename = "";
     if (imagebolb && imagebolb.length > 0) {
-        uniqueFilename = `${safeName}_${safePhone}.jpg`;
+        const fileSuffix = id ? `_${id}` : `_${Date.now()}`;
+        uniqueFilename = `${safeName}_${safePhone}${fileSuffix}.jpg`;
         imageBuffer = Buffer.from(imagebolb, 'base64');
     }
-    if (name != null) {
-        const selectQuery = "SELECT * FROM contacts WHERE phone_no = ?";
-        db.query(selectQuery, [phone], (selectErr, selectResult) => {
-            if (selectErr) {
-                console.error(selectErr);
-                res.status(500).send('Error checking phone number');
+
+    if (id) {
+        // If ID passed, update that specific profile
+        const checkSql = "SELECT * FROM contacts WHERE id = ?";
+        db.query(checkSql, [id], (checkErr, checkResult) => {
+            if (checkErr) return res.status(500).send('Error checking contact');
+            if (checkResult.length > 0) {
+                const finalImage = uniqueFilename || checkResult[0].image || '';
+                var updateQuery = "UPDATE contacts SET name = ?, phone_no = ?, service = ?, email = ?, location = ?, location1 = ?, state = ?, city = ?, image = ?, about = ?, keywords = ?, landlineno = ?, wpno = ?, skypeno = ?, category = ?, phonenos = ?, owner_email = ?, services = ?, deleted_contact = 0 WHERE id = ?";
+                var updateValues = [name, phone, service, email, location, location1, state, city, finalImage, about, keyword, landlineno, wpno, skypeno, category, output, owner_email, services, id];
+
+                db.query(updateQuery, updateValues, (updateErr) => {
+                    if (updateErr) return res.status(500).send('Error updating profile');
+                    res.status(200).json({ status: 'success', id: id, message: 'Phone number saved successfully' });
+                    if (imageBuffer != null && uniqueFilename) {
+                        const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                        fs.writeFile(imagePath, imageBuffer, 'base64', (err) => { if (err) console.error(err); });
+                    }
+                });
             } else {
-                if (selectResult.length > 0) {
-                    console.log('Phone number is already exist');
-                    var updateQuery = "UPDATE contacts SET name = ?,phone_no=?, service = ?,email=?, location = ?,location1=?,state=?, city=?, image=?,about=?,keywords=?, landlineno=?,  wpno=?, skypeno=?, category=?, phonenos=?, owner_email=?, services=?, deleted_contact=0 WHERE phone_no = ?";
-                    var updateValues = [name, phone, service, email, location, location1, state, city, uniqueFilename, about, keyword, landlineno, wpno, skypeno, category, output, owner_email, services, phone1];
+                // Insert as new
+                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
 
+                db.query(insertQuery, insertValues, (insertErr, insertResult) => {
+                    if (insertErr) return res.status(500).send('Error creating profile');
+                    res.status(200).json({ status: 'success', id: insertResult.insertId, message: 'Phone number saved successfully' });
+                    if (imageBuffer != null && uniqueFilename) {
+                        const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                        fs.writeFile(imagePath, imageBuffer, 'base64', (err) => { if (err) console.error(err); });
+                    }
+                });
+            }
+        });
+    } else if (name != null && name.trim() !== '') {
+        // ALWAYS INSERT a new profile when creating a profile (allows multiple profiles with same phone number)
+        const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
 
-                    db.query(updateQuery, updateValues, (updateErr, updateResult) => {
-                        if (updateErr) {
-                            console.error(updateErr);
-                            res.status(500).send('Error updating phone number');
-                        } else {
-                            console.log('Phone number updated successfully');
-                            res.status(200).send('Phone number saved successfully');
-                            if (imageBuffer != null) {
-                                const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
-                                fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
-                                    if (err) {
-                                        console.error(err);
-                                    } else {
-                                        console.log('Image saved successfully');
-                                    }
-                                });
-                            }
-                        }
-                    });
-
-                } else {
-                    const insertQuery = "INSERT INTO contacts (name, phone_no,email, service, location,location1,state, city, image, keywords,about, landlineno, wpno, skypeno,  category, phonenos, publish, owner_email,services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?)";
-                    const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish, owner_email, services];
-
-                    db.query(insertQuery, insertValues, (insertErr, insertResult) => {
-                        if (insertErr) {
-                            console.error(insertErr);
-                            res.status(500).send('Error submitting report');
-                        } else {
-                            console.log('Phone number saved successfully');
-                            res.status(200).send('Phone number saved successfully');
-                            if (imageBuffer != null) {
-                                const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
-                                fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
-                                    if (err) {
-                                        console.error(err);
-                                    } else {
-                                        console.log('Image saved successfully');
-                                    }
-                                });
-                            }
-                        }
-                    });
-                }
+        db.query(insertQuery, insertValues, (insertErr, insertResult) => {
+            if (insertErr) {
+                console.error(insertErr);
+                return res.status(500).send('Error submitting report');
+            }
+            console.log(`Phone number saved successfully with new ID: ${insertResult.insertId}`);
+            res.status(200).json({ status: 'success', id: insertResult.insertId, message: 'Phone number saved successfully' });
+            if (imageBuffer != null && uniqueFilename) {
+                const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
+                fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
+                    if (err) console.error(err);
+                });
             }
         });
     } else {
-        var updateQuery = "UPDATE contacts SET email=?, publish=? WHERE phone_no = ?";
-        var updateValues = [email, publish, phone];
-
-        db.query(updateQuery, updateValues, (updateErr, updateResult) => {
-            if (updateErr) {
-                console.error(updateErr);
-                res.status(500).send('Error updating phone number');
-            } else {
-                console.log('Phone number updated successfully');
+        // Quick publish/email update
+        if (id) {
+            var updateQuery = "UPDATE contacts SET email=?, publish=? WHERE id = ?";
+            db.query(updateQuery, [email, publish, id], (updateErr) => {
+                if (updateErr) return res.status(500).send('Error updating profile');
                 res.status(200).send('Phone number saved successfully');
-            }
-        });
+            });
+        } else {
+            var updateQuery = "UPDATE contacts SET email=?, publish=? WHERE phone_no = ?";
+            db.query(updateQuery, [email, publish, phone], (updateErr) => {
+                if (updateErr) return res.status(500).send('Error updating phone number');
+                res.status(200).send('Phone number saved successfully');
+            });
+        }
     }
 });
 
@@ -518,35 +553,66 @@ app.get('/check-contact', async (req, res) => {
     });
 });
 app.post('/delete_contact', (req, res) => {
-    const { phone } = req.body;
+    const { id, phone } = req.body;
 
-    var updateQuery = "UPDATE contacts SET deleted_contact=1 WHERE phone_no = ?";//delete from contacts where phone_no=?";
-    var updateValues = [phone];
+    if (id) {
+        var updateQuery = "UPDATE contacts SET deleted_contact=1, publish='no' WHERE id = ?";
+        var updateValues = [id];
 
-    db.query(updateQuery, updateValues, (updateErr, updateResult) => {
-        if (updateErr) {
-            console.error(updateErr);
-            res.status(500).send('Error updating call count');
-        } else {
-            console.log('Phone no deleted');
-            res.status(200).send('phone no deleted');
-        }
-    });
+        db.query(updateQuery, updateValues, (updateErr, updateResult) => {
+            if (updateErr) {
+                console.error(updateErr);
+                res.status(500).send('Error deleting profile');
+            } else {
+                console.log(`Profile ${id} deleted`);
+                res.status(200).send('phone no deleted');
+            }
+        });
+    } else {
+        var updateQuery = "UPDATE contacts SET deleted_contact=1, publish='no' WHERE phone_no = ?";
+        var updateValues = [phone];
+
+        db.query(updateQuery, updateValues, (updateErr, updateResult) => {
+            if (updateErr) {
+                console.error(updateErr);
+                res.status(500).send('Error updating call count');
+            } else {
+                console.log('Phone no deleted');
+                res.status(200).send('phone no deleted');
+            }
+        });
+    }
 });
 app.post('/savetags', (req, res) => {
-    const { tags, phone } = req.body;
-    var updateQuery = "UPDATE contacts SET keywords=? WHERE phone_no = ?";
-    var updateValues = [tags, phone];
+    const { id, tags, phone } = req.body;
 
-    db.query(updateQuery, updateValues, (updateErr, updateResult) => {
-        if (updateErr) {
-            console.error(updateErr);
-            res.status(500).send('Error updating phone number');
-        } else {
-            console.log('Phone number updated successfully');
-            res.status(200).send('Phone number saved successfully');
-        }
-    });
+    if (id) {
+        var updateQuery = "UPDATE contacts SET keywords=? WHERE id = ?";
+        var updateValues = [tags, id];
+
+        db.query(updateQuery, updateValues, (updateErr, updateResult) => {
+            if (updateErr) {
+                console.error(updateErr);
+                res.status(500).send('Error updating keywords');
+            } else {
+                console.log(`Keywords updated for profile ${id}`);
+                res.status(200).send('Phone number saved successfully');
+            }
+        });
+    } else {
+        var updateQuery = "UPDATE contacts SET keywords=? WHERE phone_no = ?";
+        var updateValues = [tags, phone];
+
+        db.query(updateQuery, updateValues, (updateErr, updateResult) => {
+            if (updateErr) {
+                console.error(updateErr);
+                res.status(500).send('Error updating phone number');
+            } else {
+                console.log('Phone number updated successfully');
+                res.status(200).send('Phone number saved successfully');
+            }
+        });
+    }
 });
 app.post('/savesearch', (req, res) => {
     const { tag, location, country } = req.body;
@@ -819,14 +885,12 @@ app.post('/savecallcount1', (req, res) => {
     });
 });
 app.post('/addfavourite', (req, res) => {
-    const { phone_no, count } = req.body;
-    var updateQuery = "";
-    if (count == "1") {
-        updateQuery = "update contacts set favourite_count=favourite_count+1 where phone_no=?;";
-    } else {
-        updateQuery = "update contacts set favourite_count=favourite_count-1 where phone_no=?;";
-    }
-    var updateValues = [phone_no];
+    const { id, phone_no, count } = req.body;
+    var delta = count == "1" ? 1 : -1;
+    var updateQuery = id 
+        ? "update contacts set favourite_count=GREATEST(0, favourite_count + ?) where id=?;"
+        : "update contacts set favourite_count=GREATEST(0, favourite_count + ?) where phone_no=?;";
+    var updateValues = [delta, id || phone_no];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -901,9 +965,12 @@ app.get('/check-call-count1', (req, res) => {
     });
 });
 app.get('/check-premium', (req, res) => {
+    var id = req.query.id;
     var phone = req.query.phone;
-    var checkPhoneSql = `select premium,premium_start, premium_end, verification, verification_email from contacts where phone_no =?;`;
-    var value = [phone.replace(/\s+/g, '')];
+    var checkPhoneSql = id 
+        ? `select premium,premium_start, premium_end, verification, verification_email from contacts where id =?;`
+        : `select premium,premium_start, premium_end, verification, verification_email from contacts where phone_no =?;`;
+    var value = [id || (phone ? phone.replace(/\s+/g, '') : '')];
     db.query(checkPhoneSql, value, (checkPhoneErr, checkPhoneResult) => {
         if (checkPhoneErr) {
             console.error('Error checking phone number:', checkPhoneErr);
@@ -918,9 +985,11 @@ app.get('/check-premium', (req, res) => {
     });
 });
 app.post('/savepremium', (req, res) => {
-    const { phone_no, premium, premium_start, premium_end } = req.body;
-    var updateQuery = "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where phone_no=?;";
-    var updateValues = [premium, Math.floor(parseInt(premium_start) / 1000), Math.floor(parseInt(premium_end) / 1000), phone_no];
+    const { id, phone_no, premium, premium_start, premium_end } = req.body;
+    var updateQuery = id 
+        ? "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where id=?;"
+        : "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where phone_no=?;";
+    var updateValues = [premium, Math.floor(parseInt(premium_start) / 1000), Math.floor(parseInt(premium_end) / 1000), id || phone_no];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -933,9 +1002,9 @@ app.post('/savepremium', (req, res) => {
     });
 });
 app.post('/updateverify', (req, res) => {
-    const { phone, email } = req.body;
-    var checkQuery = "SELECT * FROM `contacts` WHERE phone_no = ?;";
-    var checkValues = [phone];
+    const { id, phone, email } = req.body;
+    var checkQuery = id ? "SELECT * FROM `contacts` WHERE id = ?;" : "SELECT * FROM `contacts` WHERE phone_no = ?;";
+    var checkValues = [id || phone];
 
     db.query(checkQuery, checkValues, (checkErr, checkResult) => {
         if (checkErr) {
@@ -945,13 +1014,13 @@ app.post('/updateverify', (req, res) => {
             if (checkResult.length === 0) {
                 res.status(200).send('Phone number not found');
             } else {
-                var updateQuery
+                var updateQuery;
                 if (email == null) {
-                    updateQuery = "UPDATE `contacts` SET verification = 1, publish='yes' WHERE phone_no = ?;";
+                    updateQuery = id ? "UPDATE `contacts` SET verification = 1, publish='yes' WHERE id = ?;" : "UPDATE `contacts` SET verification = 1, publish='yes' WHERE phone_no = ?;";
                 } else {
-                    updateQuery = "UPDATE `contacts` SET verification_email = 1 WHERE phone_no = ?;";
+                    updateQuery = id ? "UPDATE `contacts` SET verification_email = 1 WHERE id = ?;" : "UPDATE `contacts` SET verification_email = 1 WHERE phone_no = ?;";
                 }
-                var updateValues = [phone];
+                var updateValues = [id || phone];
 
                 db.query(updateQuery, updateValues, (updateErr, updateResult) => {
                     if (updateErr) {
@@ -968,9 +1037,10 @@ app.post('/updateverify', (req, res) => {
 });
 
 app.get('/check-priority', (req, res) => {
+    var id = req.query.id;
     var phone = req.query.phone;
-    var checkPhoneSql = `select * from contacts where phone_no =?;`;
-    var value = [phone];
+    var checkPhoneSql = id ? `select * from contacts where id =?;` : `select * from contacts where phone_no =?;`;
+    var value = [id || phone];
     db.query(checkPhoneSql, value, (checkPhoneErr, checkPhoneResult) => {
         if (checkPhoneErr) {
             console.error('Error checking phone number:', checkPhoneErr);
@@ -985,9 +1055,9 @@ app.get('/check-priority', (req, res) => {
     });
 });
 app.post('/savepriority', (req, res) => {
-    const { phone, priority_amount, priority, owner } = req.body;
-    var updateQuery = "update `contacts` set priority=?, priority_balance=?, owner=? where phone_no=?;";
-    var updateValues = [priority, priority_amount, owner, phone];
+    const { id, phone, priority_amount, priority, owner } = req.body;
+    var updateQuery = id ? "update `contacts` set priority=?, priority_balance=?, owner=? where id=?;" : "update `contacts` set priority=?, priority_balance=?, owner=? where phone_no=?;";
+    var updateValues = [priority, priority_amount, owner, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1000,9 +1070,9 @@ app.post('/savepriority', (req, res) => {
     });
 });
 app.post('/savepromote', (req, res) => {
-    const { phone, international, country, state, city } = req.body;
-    var updateQuery = "update `contacts` set promote_international=?, promote_country=?, promote_state=?, promote_city=? where phone_no=?;";
-    var updateValues = [international, country, state, city, phone];
+    const { id, phone, international, country, state, city } = req.body;
+    var updateQuery = id ? "update `contacts` set promote_international=?, promote_country=?, promote_state=?, promote_city=? where id=?;" : "update `contacts` set promote_international=?, promote_country=?, promote_state=?, promote_city=? where phone_no=?;";
+    var updateValues = [international, country, state, city, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1015,9 +1085,9 @@ app.post('/savepromote', (req, res) => {
     });
 });
 app.post('/savepriorityamount', (req, res) => {
-    const { phone, phone1, priority_amount } = req.body;
-    var updateQuery = "update `contacts` set priority_balance = priority_balance + ? where phone_no=? and phone_no=?;";
-    var updateValues = [priority_amount, phone, phone1];
+    const { id, phone, phone1, priority_amount } = req.body;
+    var updateQuery = id ? "update `contacts` set priority_balance = priority_balance + ? where id=?;" : "update `contacts` set priority_balance = priority_balance + ? where phone_no=? and phone_no=?;";
+    var updateValues = id ? [priority_amount, id] : [priority_amount, phone, phone1 || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1030,24 +1100,27 @@ app.post('/savepriorityamount', (req, res) => {
     });
 });
 app.get('/check_search_type', (req, res) => {
-    var phone = req.query.phone.replace(/\s+/g, '');
+    var id = req.query.id;
+    var phone = req.query.phone ? req.query.phone.replace(/\s+/g, '') : '';
 
-    // Query 1: Get Contact Details
-    var contactSql = `SELECT * FROM contacts WHERE phone_no = ?;`;
+    // Query 1: Get Contact Details (prioritize ID)
+    var contactSql = id ? `SELECT * FROM contacts WHERE id = ?;` : `SELECT * FROM contacts WHERE phone_no = ?;`;
+    var contactParam = id || phone;
 
-    db.query(contactSql, [phone], (err, contactResult) => {
+    db.query(contactSql, [contactParam], (err, contactResult) => {
         if (err) return res.status(200).json([{ error: 'Error' }]);
         if (contactResult.length === 0) return res.status(200).json([{ error: 'No data' }]);
 
+        let contactData = contactResult[0];
+        const contactPhone = (contactData.phone_no || phone).replace(/\s+/g, '');
         // Query 2: Get Reviews for this contact
         var reviewsSql = `SELECT * FROM reviews WHERE contact_phone = ? ORDER BY created DESC;`;
 
-        db.query(reviewsSql, [phone], (revErr, reviewsResult) => {
+        db.query(reviewsSql, [contactPhone], (revErr, reviewsResult) => {
             if (revErr) return res.status(200).json([{ error: 'Error reviews' }]);
 
             // MERGE: Add the reviews list into the contact object
-            let contactData = contactResult[0];
-            contactData.reviews = reviewsResult;
+            contactData.reviews = reviewsResult || [];
 
             // Return as array to keep Flutter compatibility
             res.status(200).json([contactData]);
@@ -1120,9 +1193,9 @@ app.post('/save_review', (req, res) => {
     });
 });
 app.post('/save_search_type', (req, res) => {
-    const { phone, type, publish, who_contact } = req.body;
-    var updateQuery = "update `contacts` set search_type=?, publish=?, who_contact=? where phone_no=?;";
-    var updateValues = [type, publish, who_contact, phone];
+    const { id, phone, type, publish, who_contact } = req.body;
+    var updateQuery = id ? "update `contacts` set search_type=?, publish=?, who_contact=? where id=?;" : "update `contacts` set search_type=?, publish=?, who_contact=? where phone_no=?;";
+    var updateValues = [type, publish, who_contact, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1135,9 +1208,9 @@ app.post('/save_search_type', (req, res) => {
     });
 });
 app.post('/save_search_type1', (req, res) => {
-    const { phone, type } = req.body;
-    var updateQuery = "update `contacts` set search_type=? where phone_no=?;";
-    var updateValues = [type, phone];
+    const { id, phone, type } = req.body;
+    var updateQuery = id ? "update `contacts` set search_type=? where id=?;" : "update `contacts` set search_type=? where phone_no=?;";
+    var updateValues = [type, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1150,9 +1223,9 @@ app.post('/save_search_type1', (req, res) => {
     });
 });
 app.post('/save_publish', (req, res) => {
-    const { phone, publish } = req.body;
-    var updateQuery = "update `contacts` set publish=? where phone_no=?;";
-    var updateValues = [publish, phone];
+    const { id, phone, publish } = req.body;
+    var updateQuery = id ? "update `contacts` set publish=? where id=?;" : "update `contacts` set publish=? where phone_no=?;";
+    var updateValues = [publish, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1165,9 +1238,9 @@ app.post('/save_publish', (req, res) => {
     });
 });
 app.post('/save_access', (req, res) => {
-    const { phone, who_contact } = req.body;
-    var updateQuery = "update `contacts` set who_contact=? where phone_no=?;";
-    var updateValues = [who_contact, phone];
+    const { id, phone, who_contact } = req.body;
+    var updateQuery = id ? "update `contacts` set who_contact=? where id=?;" : "update `contacts` set who_contact=? where phone_no=?;";
+    var updateValues = [who_contact, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1180,9 +1253,9 @@ app.post('/save_access', (req, res) => {
     });
 });
 app.post('/save_show', (req, res) => {
-    const { phone, show } = req.body;
-    var updateQuery = "update `contacts` set show_contact=? where phone_no=?;";
-    var updateValues = [show, phone];
+    const { id, phone, show } = req.body;
+    var updateQuery = id ? "update `contacts` set show_contact=? where id=?;" : "update `contacts` set show_contact=? where phone_no=?;";
+    var updateValues = [show, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
@@ -1195,9 +1268,9 @@ app.post('/save_show', (req, res) => {
     });
 });
 app.post('/savephonenos', (req, res) => {
-    const { phone, output } = req.body;
-    var updateQuery = "update `contacts` set phonenos=? where phone_no=?;";
-    var updateValues = [output, phone];
+    const { id, phone, output } = req.body;
+    var updateQuery = id ? "update `contacts` set phonenos=? where id=?;" : "update `contacts` set phonenos=? where phone_no=?;";
+    var updateValues = [output, id || phone];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
