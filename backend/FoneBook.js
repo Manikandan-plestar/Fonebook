@@ -492,8 +492,8 @@ app.get('/check-contact', async (req, res) => {
             (SELECT * FROM contacts 
              WHERE publish='yes' AND deleted_contact=0 
              AND (
-                /* BROAD LOGIC */
-                (search_type = 'broad' AND (name LIKE ? OR keywords LIKE ? OR location LIKE ?))
+                /* BROAD LOGIC - search name, keywords, location, AND profession (service) */
+                (search_type = 'broad' AND (name LIKE ? OR keywords LIKE ? OR location LIKE ? OR service LIKE ?))
                 
                 OR
                 
@@ -510,26 +510,26 @@ app.get('/check-contact', async (req, res) => {
 
         var value = [
             searchPattern, searchPattern, searchPattern, searchPattern, // For Ads
-            searchPattern, searchPattern, searchPattern, trimmedQuery, trimmedQuery, phraseRegex // For Results
+            searchPattern, searchPattern, searchPattern, searchPattern, trimmedQuery, trimmedQuery, phraseRegex // For Results
         ];
         if (location !== "") {
             const locationArray = location.split(', ');
             const lastElement = locationArray[locationArray.length - 1];
 
-            checkPhoneSql += ` AND location LIKE ?`;
-            value.push(`%${lastElement}%`);
+            checkPhoneSql += ` AND (location LIKE ? OR location1 LIKE ? OR city LIKE ? OR state LIKE ?)`;
+            value.push(`%${lastElement}%`, `%${lastElement}%`, `%${lastElement}%`, `%${lastElement}%`);
         }
 
         checkPhoneSql += ` ORDER BY priority_balance DESC);`;
 
     } else if (type == "nearme") {
-        var checkPhoneSql = "(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish='yes' and deleted_contact=0 and promote_country=? ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts where location LIKE Concat('%',?,'%') AND publish='yes' and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);";
-        var value = [location, location];
+        var checkPhoneSql = "(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish='yes' and deleted_contact=0 and promote_country=? ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts where (location LIKE Concat('%',?,'%') OR location1 LIKE Concat('%',?,'%') OR city LIKE Concat('%',?,'%') OR state LIKE Concat('%',?,'%')) AND publish='yes' and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);";
+        var value = [location, location, location, location, location];
     } else if (type == "location") {
         var locationArray = location.split(', ');
         var lastElement = locationArray[locationArray.length - 1];
-        var checkPhoneSql = "(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish='yes' and deleted_contact=0 and (promote_city='All' or ? like CONCAT('%', promote_city, '%')) ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts where location LIKE Concat('%',?,'%') AND publish='yes' and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);";
-        var value = [lastElement, lastElement];
+        var checkPhoneSql = "(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish='yes' and deleted_contact=0 and (promote_city='All' or ? like CONCAT('%', promote_city, '%')) ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts where (location LIKE Concat('%',?,'%') OR location1 LIKE Concat('%',?,'%') OR city LIKE Concat('%',?,'%') OR state LIKE Concat('%',?,'%')) AND publish='yes' and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);";
+        var value = [lastElement, lastElement, lastElement, lastElement, lastElement];
     } else if (type == "all") {
         var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);`;
         var value = [];
@@ -829,7 +829,7 @@ app.post('/savecallcount', (req, res) => {
     });
 });
 app.post('/savecallcount1', (req, res) => {
-    const { phone_no, location, tag, country } = req.body;
+    const { id, phone_no, location, tag, country } = req.body;
     var updateQuery = "INSERT INTO `call_count` (phone_no,location,tag,country,call_type) VALUES (?, ?, ?,?,?);";
     var updateValues = [phone_no, location, tag, country, "paid"];
 
@@ -839,9 +839,10 @@ app.post('/savecallcount1', (req, res) => {
             res.status(500).send('Error updating call count');
         } else {
             console.log('Call count Saved');
-            //res.status(200).send('Call count saved');
-            const selectQuery = "SELECT * FROM `contacts` WHERE phone_no = ? AND priority = 0 AND priority_balance >= 0.30;";
-            const selectValues = [phone_no];
+            const selectQuery = (id && id !== 'null' && id !== '' && id !== 'undefined')
+                ? "SELECT * FROM `contacts` WHERE id = ? AND priority = 0 AND priority_balance >= 0.30;"
+                : "SELECT * FROM `contacts` WHERE phone_no = ? AND priority = 0 AND priority_balance >= 0.30;";
+            const selectValues = (id && id !== 'null' && id !== '' && id !== 'undefined') ? [id] : [phone_no];
 
             db.query(selectQuery, selectValues, (selectErr, selectResult) => {
                 if (selectErr) {
@@ -849,31 +850,17 @@ app.post('/savecallcount1', (req, res) => {
                     res.status(500).send('Error checking priority balance');
                 } else {
                     if (selectResult.length > 0) {
-                        const updateQuery1 = "SELECT owner FROM contacts WHERE phone_no=?;";
-                        const updateValues1 = [phone_no];
+                        const targetId = selectResult[0].id;
+                        const updateQuery2 = "UPDATE contacts SET priority_balance = GREATEST(0, priority_balance - 0.30) WHERE id = ?;";
+                        const updateValues2 = [targetId];
 
-                        db.query(updateQuery1, updateValues1, (updateErr, updateResult) => {
+                        db.query(updateQuery2, updateValues2, (updateErr, updateResult) => {
                             if (updateErr) {
                                 console.error(updateErr);
                                 res.status(500).send('Error updating priority balance');
                             } else {
-                                if (updateResult.length > 0) {
-                                    const owner = updateResult[0].owner;
-                                    const updateQuery2 = "UPDATE contacts SET priority_balance = priority_balance - 0.30 WHERE phone_no IN (?,?);";
-                                    const updateValues2 = [phone_no, owner];
-
-                                    db.query(updateQuery2, updateValues2, (updateErr, updateResult) => {
-                                        if (updateErr) {
-                                            console.error(updateErr);
-                                            res.status(500).send('Error updating priority balance');
-                                        } else {
-                                            console.log('Priority balance Updated');
-                                            res.status(200).send('Call count and Priority balance updated');
-                                        }
-                                    });
-                                } else {
-                                    res.status(200).send('Owner not found for the specified phone number.');
-                                }
+                                console.log('Priority balance Updated');
+                                res.status(200).send('Call count and Priority balance updated');
                             }
                         });
                     } else {
@@ -1038,13 +1025,16 @@ app.post('/updateverify', (req, res) => {
 
 app.get('/check-priority', (req, res) => {
     var id = req.query.id;
-    var phone = req.query.phone;
-    var checkPhoneSql = id ? `select * from contacts where id =?;` : `select * from contacts where phone_no =?;`;
-    var value = [id || phone];
+    if (!id || id === 'null' || id === 'undefined' || id === '') {
+        return res.status(200).json([{ error: 'Business Profile ID required' }]);
+    }
+    var checkPhoneSql = `select * from contacts where id = ?;`;
+    var value = [id];
+
     db.query(checkPhoneSql, value, (checkPhoneErr, checkPhoneResult) => {
         if (checkPhoneErr) {
-            console.error('Error checking phone number:', checkPhoneErr);
-            res.status(200).send('Error checking phone number');
+            console.error('Error checking priority:', checkPhoneErr);
+            res.status(200).send('Error checking priority');
             return;
         }
         if (checkPhoneResult.length > 0) {
@@ -1054,47 +1044,56 @@ app.get('/check-priority', (req, res) => {
         }
     });
 });
+
 app.post('/savepriority', (req, res) => {
-    const { id, phone, priority_amount, priority, owner } = req.body;
-    var updateQuery = id ? "update `contacts` set priority=?, priority_balance=?, owner=? where id=?;" : "update `contacts` set priority=?, priority_balance=?, owner=? where phone_no=?;";
-    var updateValues = [priority, priority_amount, owner, id || phone];
+    const { id, priority_amount, priority, owner } = req.body;
+    if (!id || id === 'null' || id === 'undefined' || id === '') {
+        return res.status(400).send('Business Profile ID is required for promotion.');
+    }
+    var updateQuery = "update `contacts` set priority=?, priority_balance=?, owner=? where id=?;";
+    var updateValues = [priority, priority_amount, owner, id];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
-            console.error(updateErr);
+            console.error('Error updating Priority:', updateErr);
             res.status(500).send('Error updating Priority');
         } else {
-            //console.log('Priority updated');
             res.status(200).send('Priority updated');
         }
     });
 });
+
 app.post('/savepromote', (req, res) => {
-    const { id, phone, international, country, state, city } = req.body;
-    var updateQuery = id ? "update `contacts` set promote_international=?, promote_country=?, promote_state=?, promote_city=? where id=?;" : "update `contacts` set promote_international=?, promote_country=?, promote_state=?, promote_city=? where phone_no=?;";
-    var updateValues = [international, country, state, city, id || phone];
+    const { id, international, country, state, city } = req.body;
+    if (!id || id === 'null' || id === 'undefined' || id === '') {
+        return res.status(400).send('Business Profile ID is required.');
+    }
+    var updateQuery = "update `contacts` set promote_international=?, promote_country=?, promote_state=?, promote_city=? where id=?;";
+    var updateValues = [international, country, state, city, id];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
-            console.error(updateErr);
+            console.error('Error updating Promote:', updateErr);
             res.status(500).send('Error updating Priority');
         } else {
-            //console.log('Priority updated');
             res.status(200).send('Priority updated');
         }
     });
 });
+
 app.post('/savepriorityamount', (req, res) => {
-    const { id, phone, phone1, priority_amount } = req.body;
-    var updateQuery = id ? "update `contacts` set priority_balance = priority_balance + ? where id=?;" : "update `contacts` set priority_balance = priority_balance + ? where phone_no=? and phone_no=?;";
-    var updateValues = id ? [priority_amount, id] : [priority_amount, phone, phone1 || phone];
+    const { id, priority_amount } = req.body;
+    if (!id || id === 'null' || id === 'undefined' || id === '') {
+        return res.status(400).send('Business Profile ID is required.');
+    }
+    var updateQuery = "update `contacts` set priority_balance = priority_balance + ? where id=?;";
+    var updateValues = [priority_amount, id];
 
     db.query(updateQuery, updateValues, (updateErr, updateResult) => {
         if (updateErr) {
-            console.error(updateErr);
+            console.error('Error updating Priority Amount:', updateErr);
             res.status(500).send('Error updating Priority');
         } else {
-            //console.log('Priority updated');
             res.status(200).send('Priority amount saved');
         }
     });

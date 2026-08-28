@@ -10,13 +10,13 @@ import 'profile_list_screen.dart';
 class AppShell extends StatefulWidget {
   final int initialIndex;
   final bool showProfileList;
-  const AppShell({super.key, this.initialIndex = 0, this.showProfileList = false});
+  const AppShell({super.key, this.initialIndex = 1, this.showProfileList = false});
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 0;
+  int _index = 1;
   final api = ApiClient();
   final store = SessionStore();
   UserSession _session = const UserSession();
@@ -46,8 +46,8 @@ class _AppShellState extends State<AppShell> {
   Future<bool> _onWillPop() async {
     final isFirstRouteInCurrentTab = !await _navigatorKeys[_index].currentState!.maybePop();
     if (isFirstRouteInCurrentTab) {
-      if (_index != 0) {
-        setState(() => _index = 0);
+      if (_index != 1) {
+        setState(() => _index = 1);
         return false;
       }
     }
@@ -69,13 +69,13 @@ class _AppShellState extends State<AppShell> {
         body: IndexedStack(
           index: _index,
           children: [
-            _buildNavigator(0, HomeScreen(
+            _buildNavigator(0, RecentScreen(api: api, store: store, session: _session)),
+            _buildNavigator(1, HomeScreen(
               api: api,
               store: store,
               session: _session,
               onSearchModeChanged: (searching) {},
             )),
-            _buildNavigator(1, RecentScreen(api: api, store: store, session: _session)),
             _buildNavigator(2, MyContactsScreen(api: api, session: _session)),
           ],
         ),
@@ -113,13 +113,14 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 0 ? const Color(0xFF343A40) : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(
-                      Icons.travel_explore,
-                      size: 22,
+                    child: Image.asset(
+                      'assets/images/history-icon.png',
+                      width: 22,
+                      height: 22,
                       color: _index == 0 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
                     ),
                   ),
-                  label: 'Search',
+                  label: 'History',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
@@ -128,14 +129,13 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 1 ? const Color(0xFF343A40) : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Image.asset(
-                      'assets/images/history-icon.png',
-                      width: 22,
-                      height: 22,
+                    child: Icon(
+                      Icons.travel_explore,
+                      size: 22,
                       color: _index == 1 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
                     ),
                   ),
-                  label: 'History',
+                  label: 'Search',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
@@ -167,7 +167,7 @@ class _AppShellState extends State<AppShell> {
         final routes = <Route<dynamic>>[
           MaterialPageRoute(builder: (context) => rootPage),
         ];
-        if (index == 0 && widget.showProfileList) {
+        if (index == 1 && widget.showProfileList) {
           routes.add(
             MaterialPageRoute(
               builder: (context) => ProfileListScreen(

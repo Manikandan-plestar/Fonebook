@@ -119,49 +119,52 @@ class _RecentScreenState extends State<RecentScreen> {
 
   Widget _buildFilterTabs() {
     final tabs = ['All', 'Missed', 'Incoming', 'Outgoing'];
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE9ECEF)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: tabs.map((tab) {
           final isSelected = _selectedFilter == tab;
           return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedFilter = tab;
-                  _applyFilters();
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF4C5B8F) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    tab,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected ? Colors.white : const Color(0xFF6C757D),
-                      fontFamily: 'Poppins',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedFilter = tab;
+                    _applyFilters();
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFF4C5B8F) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFF4C5B8F) : const Color(0xFFE0E0E0),
+                      width: 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isSelected
+                            ? const Color(0xFF4C5B8F).withValues(alpha: 0.25)
+                            : Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      tab,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                        color: isSelected ? Colors.white : const Color(0xFF616161),
+                        fontFamily: 'Poppins',
+                      ),
                     ),
                   ),
                 ),

@@ -306,7 +306,8 @@ class ContactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSponsoredCard = isSponsored || contact.priority == '0';
+    final bal = double.tryParse(contact.priorityBalance) ?? 0.0;
+    final isSponsoredCard = !isMyContact && (isSponsored || (contact.priority == '0' && bal > 0));
     
     final timeAgo = showTime ? _getTimeAgo(contact.timestamp) : "";
     final subtitle = showTime && timeAgo.isNotEmpty ? "${contact.service} • $timeAgo" : contact.service;

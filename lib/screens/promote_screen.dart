@@ -57,8 +57,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
         final newBalStr = newBal.toStringAsFixed(2);
 
         await _api.post('savepriority', {
-          if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
-          'phone': widget.contact.phone,
+          'id': widget.contact.id!,
           'priority_amount': newBalStr,
           'priority': '0',
         });
@@ -93,16 +92,17 @@ class _PromoteScreenState extends State<PromoteScreen> {
   }
 
   Future<void> _loadStatus() async {
+    final profileId = widget.contact.id;
+    if (profileId == null || profileId.isEmpty) {
+      debugPrint("PromoteScreen: No Business Profile ID available.");
+      return;
+    }
+
     try {
-      // Prioritize contact ID if available, otherwise phone
-      final queryParams = <String, String>{
-        if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
-        'phone': widget.contact.phone,
-      };
-      final balRes = await _api.get('check-priority', queryParams);
+      final balRes = await _api.get('check-priority', {'id': profileId});
       
       String foundBal = '0.00';
-      if (balRes is List && balRes.isNotEmpty) {
+      if (balRes is List && balRes.isNotEmpty && balRes[0]['error'] == null) {
         foundBal = balRes[0]['priority_balance']?.toString() ?? '0.00';
         final data = balRes[0];
         final currentBal = double.tryParse(foundBal) ?? 0.0;
@@ -112,16 +112,14 @@ class _PromoteScreenState extends State<PromoteScreen> {
         if (currentBal > 0 && dbPriority == '1') {
           isProm = true;
           await _api.post('savepriority', {
-            if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
-            'phone': widget.contact.phone,
+            'id': profileId,
             'priority_amount': foundBal,
             'priority': '0',
           });
         } else if (currentBal <= 0 && dbPriority == '0') {
           isProm = false;
           await _api.post('savepriority', {
-            if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
-            'phone': widget.contact.phone,
+            'id': profileId,
             'priority_amount': '0.00',
             'priority': '1',
           });
@@ -145,6 +143,9 @@ class _PromoteScreenState extends State<PromoteScreen> {
   }
 
   Future<void> _updatePriority(bool value) async {
+    final profileId = widget.contact.id;
+    if (profileId == null || profileId.isEmpty) return;
+
     final currentBal = double.tryParse(_balance) ?? 0.0;
     if (value && currentBal <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -160,8 +161,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
     setState(() => _isPromoting = value);
     final messenger = ScaffoldMessenger.of(context);
     await _api.post('savepriority', {
-      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
-      'phone': widget.contact.phone,
+      'id': profileId,
       'priority_amount': _balance,
       'priority': value ? '0' : '1',
     });
@@ -177,9 +177,12 @@ class _PromoteScreenState extends State<PromoteScreen> {
   }
 
   Future<void> _updateSearchType(String type) async {
+    final profileId = widget.contact.id;
+    if (profileId == null || profileId.isEmpty) return;
+
     setState(() => _searchType = type);
     await _api.post('save_search_type1', {
-      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
+      'id': profileId,
       'phone': widget.contact.phone,
       'type': type,
     });
@@ -189,9 +192,11 @@ class _PromoteScreenState extends State<PromoteScreen> {
   }
 
   Future<void> _savePromote() async {
+    final profileId = widget.contact.id;
+    if (profileId == null || profileId.isEmpty) return;
+
     await _api.post('savepromote', {
-      if (widget.contact.id != null && widget.contact.id!.isNotEmpty) 'id': widget.contact.id!,
-      'phone': widget.contact.phone,
+      'id': profileId,
       'international': _isInternational ? 'yes' : 'no',
       'country': _selectedCountry,
       'state': _selectedState,

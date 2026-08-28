@@ -43,6 +43,26 @@ class _HomeScreenState extends State<HomeScreen> {
   String _scopeLabel = 'Location(Current Location)';
   String? _selectedLocation; // For filtering
   bool _userHasCustomScope = false;
+  List<Map<String, dynamic>> _cachedDirectoryList = [];
+
+  void _onSearchChanged(String v) {
+    if (v.trim().isEmpty) {
+      setState(() {
+        _isSearching = false;
+        _results.clear();
+        _hasSearched = false;
+        _loading = false;
+        widget.onSearchModeChanged(false);
+      });
+    } else {
+      if (!_isSearching) {
+        setState(() {
+          _isSearching = true;
+          widget.onSearchModeChanged(true);
+        });
+      }
+    }
+  }
 
   String _mapCountryCodeToName(String code) {
     final upper = code.toUpperCase();
@@ -118,6 +138,31 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     _loadLocalContacts();
+    _preloadDirectoryData();
+  }
+
+  Future<void> _preloadDirectoryData() async {
+    try {
+      final dirData = await widget.api.get('check-contact', {
+        'type': 'all',
+        'location': '',
+      });
+      if (dirData is List) {
+        final list = <Map<String, dynamic>>[];
+        for (final item in dirData) {
+          if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
+            list.add(Map<String, dynamic>.from(item));
+          }
+        }
+        if (mounted) {
+          setState(() {
+            _cachedDirectoryList = list;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Preload directory error: $e");
+    }
   }
 
   Future<void> _autoFetchLocation() async {
@@ -182,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didUpdateWidget(HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _preloadDirectoryData();
     if (oldWidget.session.email != widget.session.email || oldWidget.session.phone != widget.session.phone) {
       _loadLocalContacts();
     }
@@ -289,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_scopeLabel == 'International') return true;
 
     final target = targetLoc.trim().toLowerCase();
-    if (target.isEmpty || target == 'international' || target == 'all') return true;
+    if (target.isEmpty || target == 'international' || target == 'all' || target == 'current location') return true;
 
     final parts = target
         .split(',')
@@ -304,12 +350,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final fullText = '$cLoc $cLoc1 $cCity $cState'.trim();
 
-    // If contact has no location info at all, exclude when location filter is active
+    // If contact has no location info specified, do not arbitrarily drop it
     if (fullText.isEmpty) {
-      return false;
+      return true;
     }
 
     for (final p in parts) {
+      if (p == 'current location' || p.isEmpty) continue;
       if (fullText.contains(p)) return true;
       if (cCity.isNotEmpty && (p.contains(cCity) || cCity.contains(p))) return true;
       if (cState.isNotEmpty && (p.contains(cState) || cState.contains(p))) return true;
@@ -328,256 +375,273 @@ class _HomeScreenState extends State<HomeScreen> {
       _hasSearched = true;
     });
 
+    unawaited(widget.api.post('savesearch', {
+      'tag': q.trim(),
+      'country': widget.session.country ?? '',
+      'location': widget.session.place1 ?? '',
+    }));
+    unawaited(_loadLocalContacts());
+
+    String apiLocation = '';
+    if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
+      apiLocation = _selectedLocation ?? '';
+    }
+
     try {
-      unawaited(widget.api.post('savesearch', {
-        'tag': q.trim(),
-        'country': widget.session.country ?? '',
-        'location': widget.session.place1 ?? '',
-      }));
-
-      await _loadLocalContacts();
-
-      final cleanQ = query.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-
-      List<DirectoryContact> rawApiList = [];
-      String apiLocation = '';
-      if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
-        apiLocation = _selectedLocation ?? '';
-      }
-
-      try {
-        final List<Map<String, dynamic>> combinedRaw = [];
-
-        // 1. Query search API
-        final data = await widget.api.get('check-contact', {
+      // Fetch fresh live data in parallel (guarantees newly created business profiles are included)
+      final results = await Future.wait([
+        widget.api.get('check-contact', {
           'type': 'search',
           'query': q.trim(),
           'location': apiLocation,
-        });
+        }),
+        widget.api.get('check-contact', {
+          'type': 'all',
+          'location': '',
+        }),
+      ]);
 
-        if (data is List) {
-          for (final item in data) {
-            if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
-              combinedRaw.add(Map<String, dynamic>.from(item));
-            }
-          }
-        }
+      final searchData = results[0] is List ? results[0] as List : [];
+      final dirData = results[1] is List ? results[1] as List : [];
 
-        // 2. Also fetch directory data to ensure full profession coverage from backend data
-        final dirData = await widget.api.get('check-contact', {
-          'type': apiLocation.isNotEmpty ? 'location' : 'all',
-          'location': apiLocation,
-        });
-
-        if (dirData is List) {
-          for (final item in dirData) {
-            if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
-              final phone = (item['phone_no'] ?? item['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-              final id = item['id']?.toString() ?? '';
-              final alreadyExists = combinedRaw.any((c) {
-                final cPhone = (c['phone_no'] ?? c['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-                final cId = c['id']?.toString() ?? '';
-                return (id.isNotEmpty && cId == id) || (phone.isNotEmpty && cPhone == phone);
-              });
-              if (!alreadyExists) {
-                combinedRaw.add(Map<String, dynamic>.from(item));
-              }
-            }
-          }
-        }
-
-        rawApiList = combinedRaw
-            .map((e) => DirectoryContact.fromJson(e))
+      if (dirData.isNotEmpty) {
+        _cachedDirectoryList = dirData
+            .where((item) => item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty)
+            .map((item) => Map<String, dynamic>.from(item as Map))
             .toList();
-      } catch (e) {
-        debugPrint("Search API call error: $e");
       }
 
-      final localMatches = _localContacts.where((c) {
-        final cleanP = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-        final nameMatch = c.name.toLowerCase().contains(query);
-        final titleMatch = c.title.toLowerCase().contains(query);
-        final phoneMatch = cleanQ.isNotEmpty && cleanP.contains(cleanQ);
-        return nameMatch || titleMatch || phoneMatch;
-      }).map((c) {
-        final cCleanPhone = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-        
-        // Find matching directory item by phone number to enrich profession and location
-        DirectoryContact? dirItem;
-        for (final apiItem in rawApiList) {
-          final apiCleanPhone = apiItem.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-          if (cCleanPhone.isNotEmpty && apiCleanPhone.isNotEmpty &&
-              (cCleanPhone == apiCleanPhone || cCleanPhone.endsWith(apiCleanPhone) || apiCleanPhone.endsWith(cCleanPhone))) {
-            dirItem = apiItem;
-            break;
+      _processAndRenderSearchResults(searchData, dirData, query);
+    } catch (e) {
+      debugPrint("Search error: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  void _processAndRenderSearchResults(List<dynamic> searchData, List<dynamic> dirData, String query) {
+    final cleanQ = query.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+    String apiLocation = '';
+    if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
+      apiLocation = _selectedLocation ?? '';
+    }
+
+    final List<Map<String, dynamic>> combinedRaw = [];
+
+    for (final item in searchData) {
+      if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
+        combinedRaw.add(Map<String, dynamic>.from(item));
+      }
+    }
+
+    for (final item in dirData) {
+      if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
+        final id = item['id']?.toString() ?? '';
+        final phone = (item['phone_no'] ?? item['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+        final name = (item['name'] ?? '').toString().trim().toLowerCase();
+        final service = (item['service'] ?? '').toString().trim().toLowerCase();
+
+        final alreadyExists = combinedRaw.any((c) {
+          final cId = c['id']?.toString() ?? '';
+          if (id.isNotEmpty && cId.isNotEmpty) {
+            return cId == id;
           }
+          final cPhone = (c['phone_no'] ?? c['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+          final cName = (c['name'] ?? '').toString().trim().toLowerCase();
+          final cService = (c['service'] ?? '').toString().trim().toLowerCase();
+          return cPhone.isNotEmpty && phone.isNotEmpty && cPhone == phone && cName == name && cService == service;
+        });
+        if (!alreadyExists) {
+          combinedRaw.add(Map<String, dynamic>.from(item));
         }
+      }
+    }
 
-        final serviceStr = (c.title.isNotEmpty && c.title != 'My Contact')
-            ? c.title
-            : (dirItem?.service.isNotEmpty == true ? dirItem!.service : '');
+    final rawApiList = combinedRaw
+        .map((e) => DirectoryContact.fromJson(e))
+        .toList();
 
-        final locStr = (dirItem?.location?.isNotEmpty == true)
-            ? dirItem!.location
-            : null;
+    final localMatches = _localContacts.where((c) {
+      final cleanP = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+      final nameMatch = c.name.toLowerCase().contains(query);
+      final titleMatch = c.title.toLowerCase().contains(query);
+      final phoneMatch = cleanQ.isNotEmpty && cleanP.contains(cleanQ);
+      return nameMatch || titleMatch || phoneMatch;
+    }).map((c) {
+      final cCleanPhone = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+      
+      DirectoryContact? dirItem;
+      for (final apiItem in rawApiList) {
+        final apiCleanPhone = apiItem.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+        if (cCleanPhone.isNotEmpty && apiCleanPhone.isNotEmpty &&
+            (cCleanPhone == apiCleanPhone || cCleanPhone.endsWith(apiCleanPhone) || apiCleanPhone.endsWith(cCleanPhone))) {
+          dirItem = apiItem;
+          break;
+        }
+      }
 
-        return DirectoryContact(
-          name: c.name,
-          service: serviceStr,
-          phone: c.phone,
-          location: locStr,
-          location1: dirItem?.location1,
-          city: dirItem?.city,
-          state: dirItem?.state,
-          image: dirItem?.image,
-          priority: '1',
-          priorityBalance: '0',
-          category: 'my_contact',
-          showContact: 'mwelsf',
-        );
-      }).toList();
+      final serviceStr = (c.title.isNotEmpty && c.title != 'My Contact')
+          ? c.title
+          : (dirItem?.service.isNotEmpty == true ? dirItem!.service : '');
 
-      List<DirectoryContact> apiResults = rawApiList
-          .where((e) {
-            if (apiLocation.isNotEmpty && !_matchesSelectedLocation(e, apiLocation)) {
-              return false;
-            }
+      final locStr = (dirItem?.location?.isNotEmpty == true)
+          ? dirItem!.location
+          : null;
 
-            final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-            final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      return DirectoryContact(
+        name: c.name,
+        service: serviceStr,
+        phone: c.phone,
+        location: locStr,
+        location1: dirItem?.location1,
+        city: dirItem?.city,
+        state: dirItem?.state,
+        image: dirItem?.image,
+        priority: '1',
+        priorityBalance: '0',
+        category: 'my_contact',
+        showContact: 'mwelsf',
+      );
+    }).toList();
 
-            final serviceMatch = e.service.toLowerCase().contains(query) ||
-                queryWords.any((w) => w.length > 1 && e.service.toLowerCase().contains(w));
+    final apiResults = rawApiList
+        .where((e) {
+          if (apiLocation.isNotEmpty && !_matchesSelectedLocation(e, apiLocation)) {
+            return false;
+          }
 
-            final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
-                (e.tags?.toLowerCase().contains(query) ?? false) ||
-                (e.additionalServices?.toLowerCase().contains(query) ?? false) ||
-                queryWords.any((w) =>
-                    w.length > 1 &&
-                    ((e.keyword?.toLowerCase().contains(w) ?? false) ||
-                     (e.tags?.toLowerCase().contains(w) ?? false) ||
-                     (e.additionalServices?.toLowerCase().contains(w) ?? false)));
+          final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+          final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
 
-            final nameMatch = e.name.toLowerCase().contains(query);
-            final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
+          final serviceMatch = e.service.toLowerCase().contains(query) ||
+              queryWords.any((w) => w.length > 1 && e.service.toLowerCase().contains(w));
 
-            // Name filter is strictly for MyContacts: if matched ONLY by name (not profession/keyword/phone), exclude from global directory results
-            if (nameMatch && !serviceMatch && !keywordMatch && !phoneMatch) {
-              return false;
-            }
+          final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
+              (e.tags?.toLowerCase().contains(query) ?? false) ||
+              (e.additionalServices?.toLowerCase().contains(query) ?? false) ||
+              queryWords.any((w) =>
+                  w.length > 1 &&
+                  ((e.keyword?.toLowerCase().contains(w) ?? false) ||
+                   (e.tags?.toLowerCase().contains(w) ?? false) ||
+                   (e.additionalServices?.toLowerCase().contains(w) ?? false)));
 
-            final textMatch = serviceMatch || keywordMatch || phoneMatch;
-            if (!textMatch) return false;
+          final nameMatch = e.name.toLowerCase().contains(query);
+          final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
 
-            final who = (e.whoContact ?? 'international').toLowerCase();
-            if (who == 'international' || who == 'all' || who.isEmpty) {
-              return true;
-            }
+          if (nameMatch && !serviceMatch && !keywordMatch && !phoneMatch) {
+            return false;
+          }
 
-            final isLocationSearch = _scopeLabel.startsWith('Location(');
-            final isCountrySearch = _scopeLabel.startsWith('Country(');
-            final isInternationalSearch = _scopeLabel == 'International';
+          final textMatch = serviceMatch || keywordMatch || phoneMatch;
+          if (!textMatch) return false;
 
-            if (who == 'country') {
-              return isCountrySearch || isInternationalSearch;
-            }
-
-            if (who == 'location') {
-              return isLocationSearch;
-            }
-
+          final who = (e.whoContact ?? 'international').toLowerCase();
+          if (who == 'international' || who == 'all' || who.isEmpty) {
             return true;
-          })
-          .where((e) => !localMatches.any((l) {
-            final lClean = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-            final eClean = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-            return lClean.isNotEmpty && eClean.isNotEmpty && (lClean == eClean || lClean.endsWith(eClean) || eClean.endsWith(lClean));
-          }))
-          .toList();
+          }
 
-      int getSearchScore(DirectoryContact c) {
-        final serviceLower = c.service.toLowerCase().trim();
-        final keywordText = '${c.keyword ?? ''} ${c.tags ?? ''} ${c.additionalServices ?? ''}'.toLowerCase().trim();
-        final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+          final isLocationSearch = _scopeLabel.startsWith('Location(');
+          final isCountrySearch = _scopeLabel.startsWith('Country(');
+          final isInternationalSearch = _scopeLabel == 'International';
 
-        // Priority 1: Exact / Primary Profession (service) matches
-        if (serviceLower == query) return 1;
-        if (serviceLower.startsWith(query)) return 2;
-        if (serviceLower.contains(query)) return 3;
+          if (who == 'country') {
+            return isLocationSearch || isCountrySearch || isInternationalSearch;
+          }
 
-        final serviceWords = serviceLower.split(RegExp(r'[\s,\/\-]+')).where((w) => w.isNotEmpty).toList();
-        final matchesServiceWord = queryWords.any((qw) => serviceWords.any((sw) => sw == qw || (sw.length > 2 && sw.contains(qw)) || (qw.length > 2 && qw.contains(sw))));
-        if (matchesServiceWord) return 4;
+          if (who == 'location') {
+            return isLocationSearch;
+          }
 
-        // Priority 2: Keywords / Tags / Services matches
-        if (keywordText.contains(query)) return 5;
-        final keywordWords = keywordText.split(RegExp(r'[\s,\/\-]+')).where((w) => w.isNotEmpty).toList();
-        final matchesKeywordWord = queryWords.any((qw) => keywordWords.any((kw) => kw == qw || (kw.length > 2 && kw.contains(qw))));
-        if (matchesKeywordWord) return 6;
+          return true;
+        })
+        .where((e) => !localMatches.any((l) {
+          if (e.id != null && e.id!.isNotEmpty && l.id != null && l.id!.isNotEmpty) {
+            return l.id == e.id;
+          }
+          final lClean = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+          final eClean = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+          return l.name.toLowerCase().trim() == e.name.toLowerCase().trim() &&
+                 lClean.isNotEmpty && eClean.isNotEmpty && lClean == eClean;
+        }))
+        .toList();
 
-        // Other matches (phone, name)
-        return 7;
+    int getSearchScore(DirectoryContact c) {
+      final serviceLower = c.service.toLowerCase().trim();
+      final keywordText = '${c.keyword ?? ''} ${c.tags ?? ''} ${c.additionalServices ?? ''}'.toLowerCase().trim();
+      final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+
+      if (serviceLower == query) return 1;
+      if (serviceLower.startsWith(query)) return 2;
+      if (serviceLower.contains(query)) return 3;
+
+      final serviceWords = serviceLower.split(RegExp(r'[\s,\/\-]+')).where((w) => w.isNotEmpty).toList();
+      final matchesServiceWord = queryWords.any((qw) => serviceWords.any((sw) => sw == qw || (sw.length > 2 && sw.contains(qw)) || (qw.length > 2 && qw.contains(sw))));
+      if (matchesServiceWord) return 4;
+
+      if (keywordText.contains(query)) return 5;
+      final keywordWords = keywordText.split(RegExp(r'[\s,\/\-]+')).where((w) => w.isNotEmpty).toList();
+      final matchesKeywordWord = queryWords.any((qw) => keywordWords.any((kw) => kw == qw || (kw.length > 2 && kw.contains(qw))));
+      if (matchesKeywordWord) return 6;
+
+      return 7;
+    }
+
+    localMatches.sort((a, b) {
+      final scoreA = getSearchScore(a);
+      final scoreB = getSearchScore(b);
+      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+
+    final sponsoredMatches = <DirectoryContact>[];
+    final normalApiMatches = <DirectoryContact>[];
+
+    for (final item in apiResults) {
+      final bal = double.tryParse(item.priorityBalance) ?? 0.0;
+      final isPromoted = bal > 0;
+      if (isPromoted) {
+        sponsoredMatches.add(item);
+      } else {
+        normalApiMatches.add(item);
       }
+    }
 
-      // Sort localMatches by Profession first
-      localMatches.sort((a, b) {
-        final scoreA = getSearchScore(a);
-        final scoreB = getSearchScore(b);
-        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      });
+    sponsoredMatches.sort((a, b) {
+      final scoreA = getSearchScore(a);
+      final scoreB = getSearchScore(b);
+      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
 
-      final sponsoredMatches = <DirectoryContact>[];
-      final normalApiMatches = <DirectoryContact>[];
+      final aBal = double.tryParse(a.priorityBalance) ?? 0.0;
+      final bBal = double.tryParse(b.priorityBalance) ?? 0.0;
+      return bBal.compareTo(aBal);
+    });
 
-      for (final item in apiResults) {
-        final bal = double.tryParse(item.priorityBalance) ?? 0.0;
-        final isPromoted = bal > 0;
-        if (isPromoted) {
-          sponsoredMatches.add(item);
-        } else {
-          normalApiMatches.add(item);
-        }
+    normalApiMatches.sort((a, b) {
+      final scoreA = getSearchScore(a);
+      final scoreB = getSearchScore(b);
+      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+
+      if (a.verified != b.verified) {
+        return b.verified.compareTo(a.verified);
       }
+      return 0;
+    });
 
-      // Prioritize primary Service (Profession) matches first, followed by Keyword matches in sponsored matches
-      sponsoredMatches.sort((a, b) {
-        final scoreA = getSearchScore(a);
-        final scoreB = getSearchScore(b);
-        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+    final combined = [...localMatches, ...sponsoredMatches, ...normalApiMatches];
 
-        final aBal = double.tryParse(a.priorityBalance) ?? 0.0;
-        final bBal = double.tryParse(b.priorityBalance) ?? 0.0;
-        return bBal.compareTo(aBal);
-      });
-
-      // Prioritize primary Service (Profession) matches first, followed by Keyword matches in normal directory results
-      normalApiMatches.sort((a, b) {
-        final scoreA = getSearchScore(a);
-        final scoreB = getSearchScore(b);
-        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
-
-        if (a.verified != b.verified) {
-          return b.verified.compareTo(a.verified);
-        }
-        return 0;
-      });
-
-      final combined = [...localMatches, ...sponsoredMatches, ...normalApiMatches];
-
+    if (mounted) {
       setState(() {
         _results = combined;
         _localMatchCount = localMatches.length;
         _sponsoredCount = sponsoredMatches.length;
+        _loading = false;
       });
+    }
 
-      if (sponsoredMatches.isNotEmpty) {
-        _processSponsoredDeductions(sponsoredMatches, query);
-      }
-    } catch (e) {
-      debugPrint("Search error: $e");
-    } finally {
-      setState(() => _loading = false);
+    if (sponsoredMatches.isNotEmpty) {
+      _processSponsoredDeductions(sponsoredMatches, query);
     }
   }
 
@@ -1352,23 +1416,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     textInputAction: TextInputAction.search,
                     onSubmitted: (val) => _doSearch(val),
-                    onChanged: (v) {
-                      if (v.trim().isEmpty) {
-                        setState(() {
-                          _isSearching = false;
-                          _results.clear();
-                          _hasSearched = false;
-                          widget.onSearchModeChanged(false);
-                        });
-                      } else {
-                        if (!_isSearching) {
-                          setState(() {
-                            _isSearching = true;
-                            widget.onSearchModeChanged(true);
-                          });
-                        }
-                      }
-                    },
+                    onChanged: _onSearchChanged,
                     decoration: const InputDecoration(
                       hintText: 'Search name or Keyword...',
                       border: InputBorder.none,
