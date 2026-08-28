@@ -2,48 +2,28 @@ const express = require('express');
 const mysql = require('mysql');
 const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
-const fs = require('fs');
-const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const app = express();
+const privateKey = fs.readFileSync('/etc/letsencrypt/live/apps.plestarinc.com/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('/etc/letsencrypt/live/apps.plestarinc.com/fullchain.pem', 'utf8');
+const credentials = { key: privateKey, cert: certificate };
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-
-const app = express();
-
+const httpsServer = https.createServer(credentials, app);
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
+    res.header('Access-Control-Allow-Origin', 'https://apps.plestarinc.com');
+    res.header('Access-Control-Allow-Methods', 'POST');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
     next();
 });
-
-// Check if SSL certs exist (Production HTTPS vs Local HTTP)
-const privKeyPath = '/etc/letsencrypt/live/apps.plestarinc.com/privkey.pem';
-const certPath = '/etc/letsencrypt/live/apps.plestarinc.com/fullchain.pem';
-
-if (fs.existsSync(privKeyPath) && fs.existsSync(certPath)) {
-    const credentials = {
-        key: fs.readFileSync(privKeyPath, 'utf8'),
-        cert: fs.readFileSync(certPath, 'utf8')
-    };
-    const httpsServer = https.createServer(credentials, app);
-    const httpsPort = 3002;
-    httpsServer.listen(httpsPort, () => {
-        console.log(`Server is running on https://apps.plestarinc.com:${httpsPort}`);
-    });
-} else {
-    const httpServer = http.createServer(app);
-    const httpPort = 8000;
-    httpServer.listen(httpPort, () => {
-        console.log(`Server is running on http://localhost:${httpPort}`);
-    });
-}
+const httpsPort = 3002;
+httpsServer.listen(httpsPort, () => {
+    console.log(`Server is running on https://apps.plestarinc.com:${httpsPort}`);
+});
 /*async function connectToMongoDB() {
   const uri = 'mongodb://localhost:27017';
   const client = new MongoClient(uri);
@@ -183,8 +163,8 @@ connectToMongoDB();*/
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '',
-    database: 'fonebook',
+    password: 'Plestar@7542',
+    database: 'tpdirectory',
 });
 
 db.connect((err) => {
@@ -887,7 +867,7 @@ app.post('/savecallcount1', (req, res) => {
 app.post('/addfavourite', (req, res) => {
     const { id, phone_no, count } = req.body;
     var delta = count == "1" ? 1 : -1;
-    var updateQuery = id 
+    var updateQuery = id
         ? "update contacts set favourite_count=GREATEST(0, favourite_count + ?) where id=?;"
         : "update contacts set favourite_count=GREATEST(0, favourite_count + ?) where phone_no=?;";
     var updateValues = [delta, id || phone_no];
@@ -967,7 +947,7 @@ app.get('/check-call-count1', (req, res) => {
 app.get('/check-premium', (req, res) => {
     var id = req.query.id;
     var phone = req.query.phone;
-    var checkPhoneSql = id 
+    var checkPhoneSql = id
         ? `select premium,premium_start, premium_end, verification, verification_email from contacts where id =?;`
         : `select premium,premium_start, premium_end, verification, verification_email from contacts where phone_no =?;`;
     var value = [id || (phone ? phone.replace(/\s+/g, '') : '')];
@@ -986,7 +966,7 @@ app.get('/check-premium', (req, res) => {
 });
 app.post('/savepremium', (req, res) => {
     const { id, phone_no, premium, premium_start, premium_end } = req.body;
-    var updateQuery = id 
+    var updateQuery = id
         ? "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where id=?;"
         : "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where phone_no=?;";
     var updateValues = [premium, Math.floor(parseInt(premium_start) / 1000), Math.floor(parseInt(premium_end) / 1000), id || phone_no];
@@ -1285,16 +1265,16 @@ app.post('/savephonenos', (req, res) => {
 const db1 = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '',
+    password: 'Plestar@7542',
     database: 'printer_app'
 });
 
 db1.connect((err) => {
     if (err) {
-        console.warn('printer_app DB notice:', err.message);
+        console.error('Error connecting to MySQL:', err.message);
         return;
     }
-    console.log('Connected to MySQL (printer_app)');
+    console.log('Connected to MySQL');
 });
 app.post('/saveprinter', (req, res) => {
     const { phone, email, name, address, country } = req.body;

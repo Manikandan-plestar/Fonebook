@@ -114,7 +114,7 @@ class _AppShellState extends State<AppShell> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
-                      Icons.search,
+                      Icons.travel_explore,
                       size: 22,
                       color: _index == 0 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
                     ),
@@ -128,9 +128,14 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 1 ? const Color(0xFF343A40) : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Image.asset('assets/images/recent.png', width: 22, height: 22, color: _index == 1 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0)),
+                    child: Image.asset(
+                      'assets/images/history-icon.png',
+                      width: 22,
+                      height: 22,
+                      color: _index == 1 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
+                    ),
                   ),
-                  label: 'Recent',
+                  label: 'History',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(

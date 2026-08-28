@@ -346,6 +346,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       try {
+        final List<Map<String, dynamic>> combinedRaw = [];
+
+        // 1. Query search API
         final data = await widget.api.get('check-contact', {
           'type': 'search',
           'query': q.trim(),
@@ -353,11 +356,39 @@ class _HomeScreenState extends State<HomeScreen> {
         });
 
         if (data is List) {
-          rawApiList = data
-              .where((e) => e != null && e is Map && e['name'] != null && e['name'].toString().trim().isNotEmpty)
-              .map((e) => DirectoryContact.fromJson(e))
-              .toList();
+          for (final item in data) {
+            if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
+              combinedRaw.add(Map<String, dynamic>.from(item));
+            }
+          }
         }
+
+        // 2. Also fetch directory data to ensure full profession coverage from backend data
+        final dirData = await widget.api.get('check-contact', {
+          'type': apiLocation.isNotEmpty ? 'location' : 'all',
+          'location': apiLocation,
+        });
+
+        if (dirData is List) {
+          for (final item in dirData) {
+            if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
+              final phone = (item['phone_no'] ?? item['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+              final id = item['id']?.toString() ?? '';
+              final alreadyExists = combinedRaw.any((c) {
+                final cPhone = (c['phone_no'] ?? c['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+                final cId = c['id']?.toString() ?? '';
+                return (id.isNotEmpty && cId == id) || (phone.isNotEmpty && cPhone == phone);
+              });
+              if (!alreadyExists) {
+                combinedRaw.add(Map<String, dynamic>.from(item));
+              }
+            }
+          }
+        }
+
+        rawApiList = combinedRaw
+            .map((e) => DirectoryContact.fromJson(e))
+            .toList();
       } catch (e) {
         debugPrint("Search API call error: $e");
       }
@@ -413,10 +444,20 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-            final serviceMatch = e.service.toLowerCase().contains(query);
+            final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+
+            final serviceMatch = e.service.toLowerCase().contains(query) ||
+                queryWords.any((w) => w.length > 1 && e.service.toLowerCase().contains(w));
+
             final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
-                                 (e.tags?.toLowerCase().contains(query) ?? false) ||
-                                 (e.additionalServices?.toLowerCase().contains(query) ?? false);
+                (e.tags?.toLowerCase().contains(query) ?? false) ||
+                (e.additionalServices?.toLowerCase().contains(query) ?? false) ||
+                queryWords.any((w) =>
+                    w.length > 1 &&
+                    ((e.keyword?.toLowerCase().contains(w) ?? false) ||
+                     (e.tags?.toLowerCase().contains(w) ?? false) ||
+                     (e.additionalServices?.toLowerCase().contains(w) ?? false)));
+
             final nameMatch = e.name.toLowerCase().contains(query);
             final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
 
@@ -454,6 +495,38 @@ class _HomeScreenState extends State<HomeScreen> {
           }))
           .toList();
 
+      int getSearchScore(DirectoryContact c) {
+        final serviceLower = c.service.toLowerCase().trim();
+        final keywordText = '${c.keyword ?? ''} ${c.tags ?? ''} ${c.additionalServices ?? ''}'.toLowerCase().trim();
+        final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+
+        // Priority 1: Exact / Primary Profession (service) matches
+        if (serviceLower == query) return 1;
+        if (serviceLower.startsWith(query)) return 2;
+        if (serviceLower.contains(query)) return 3;
+
+        final serviceWords = serviceLower.split(RegExp(r'[\s,\/\-]+')).where((w) => w.isNotEmpty).toList();
+        final matchesServiceWord = queryWords.any((qw) => serviceWords.any((sw) => sw == qw || (sw.length > 2 && sw.contains(qw)) || (qw.length > 2 && qw.contains(sw))));
+        if (matchesServiceWord) return 4;
+
+        // Priority 2: Keywords / Tags / Services matches
+        if (keywordText.contains(query)) return 5;
+        final keywordWords = keywordText.split(RegExp(r'[\s,\/\-]+')).where((w) => w.isNotEmpty).toList();
+        final matchesKeywordWord = queryWords.any((qw) => keywordWords.any((kw) => kw == qw || (kw.length > 2 && kw.contains(qw))));
+        if (matchesKeywordWord) return 6;
+
+        // Other matches (phone, name)
+        return 7;
+      }
+
+      // Sort localMatches by Profession first
+      localMatches.sort((a, b) {
+        final scoreA = getSearchScore(a);
+        final scoreB = getSearchScore(b);
+        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+
       final sponsoredMatches = <DirectoryContact>[];
       final normalApiMatches = <DirectoryContact>[];
 
@@ -467,12 +540,26 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // Prioritize primary Service matches first, followed by Keyword matches
+      // Prioritize primary Service (Profession) matches first, followed by Keyword matches in sponsored matches
+      sponsoredMatches.sort((a, b) {
+        final scoreA = getSearchScore(a);
+        final scoreB = getSearchScore(b);
+        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+
+        final aBal = double.tryParse(a.priorityBalance) ?? 0.0;
+        final bBal = double.tryParse(b.priorityBalance) ?? 0.0;
+        return bBal.compareTo(aBal);
+      });
+
+      // Prioritize primary Service (Profession) matches first, followed by Keyword matches in normal directory results
       normalApiMatches.sort((a, b) {
-        final aService = a.service.toLowerCase().contains(query);
-        final bService = b.service.toLowerCase().contains(query);
-        if (aService && !bService) return -1;
-        if (!aService && bService) return 1;
+        final scoreA = getSearchScore(a);
+        final scoreB = getSearchScore(b);
+        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+
+        if (a.verified != b.verified) {
+          return b.verified.compareTo(a.verified);
+        }
         return 0;
       });
 
