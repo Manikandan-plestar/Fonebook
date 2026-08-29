@@ -116,7 +116,6 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
           children: [
             AppHeader(
               title: _title,
-              onBack: () => Navigator.pop(context),
               showMenu: true,
               actions: [
                 if (widget.mode == 'profile')

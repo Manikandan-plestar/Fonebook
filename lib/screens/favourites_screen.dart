@@ -43,7 +43,6 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
           children: [
             AppHeader(
               title: 'Favourites',
-              onBack: () => Navigator.pop(context),
               showSearch: true,
               searchHint: 'Search Favourites',
               onSearch: (q) {

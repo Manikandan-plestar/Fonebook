@@ -223,7 +223,6 @@ class _PromoteScreenState extends State<PromoteScreen> {
           children: [
             AppHeader(
               title: 'Promote',
-              onBack: () => Navigator.pop(context),
               showMenu: false,
             ),
             Expanded(

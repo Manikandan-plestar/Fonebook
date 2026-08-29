@@ -121,7 +121,6 @@ class _KeywordScreenState extends State<KeywordScreen> {
           children: [
             AppHeader(
               title: 'Keywords',
-              onBack: () => Navigator.pop(context),
               showMenu: true,
               api: widget.api,
               store: SessionStore(),

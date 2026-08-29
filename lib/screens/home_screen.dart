@@ -716,56 +716,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showScopeMenuAt(BuildContext btnContext) {
-    final RenderBox button = btnContext.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(btnContext).overlay!.context.findRenderObject() as RenderBox;
 
-    final Offset topBelow = button.localToGlobal(Offset(0, button.size.height + 8), ancestor: overlay);
-    final Offset bottomRight = button.localToGlobal(button.size.bottomRight(Offset(0, 8)), ancestor: overlay);
-
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(topBelow, bottomRight),
-      Offset.zero & overlay.size,
-    );
-
-    showMenu<String>(
-      context: btnContext,
-      position: position,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      elevation: 6,
-      color: const Color(0xFFFFF9E6),
-      items: const [
-        PopupMenuItem(value: 'International', child: Text('International', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.w600))),
-        PopupMenuItem(value: 'Country', child: Text('Country', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.w600))),
-        PopupMenuItem(value: 'Location', child: Text('Choose Area', style: TextStyle(fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.w600))),
-      ],
-    ).then((value) async {
-      if (value == 'International') {
-        setState(() {
-          _userHasCustomScope = true;
-          _scopeLabel = 'International';
-          _selectedLocation = null;
-        });
-        if (_search.text.isNotEmpty) _doSearch(_search.text);
-      } else if (value == 'Country') {
-        final res = await showDialog<String>(
-          context: context,
-          builder: (c) => const CountryPickerDialog(title: 'Select Country', items: countriesList),
-        );
-        if (res != null) {
-          final name = res.substring(res.indexOf(' ') + 1).trim();
-          setState(() {
-            _userHasCustomScope = true;
-            _scopeLabel = 'Country($name)';
-            _selectedLocation = name;
-          });
-          if (_search.text.isNotEmpty) _doSearch(_search.text);
-        }
-      } else if (value == 'Location') {
-        _showChooseAreaPicker();
-      }
-    });
-  }
 
   Future<List<String>> _fetchCityAreas(String city) async {
     final areas = <String>{};
@@ -998,7 +949,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           child: const Icon(Icons.my_location, color: Color(0xFF6C757D), size: 20),
                         ),
-                        title: const Text('Auto-detect GPS Location', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+                        title: const Text('Current  Location', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
                         subtitle: Text(currentCity, style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
                         onTap: () {
                           Navigator.pop(bContext);
@@ -1010,7 +961,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Divider(height: 24),
                       
                       Text(
-                        'GPS DETECTED & REGISTERED AREAS',
+                        'Nearby Areas',
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6C757D), fontFamily: 'Poppins', letterSpacing: 0.5),
                       ),
                       const SizedBox(height: 8),
@@ -1191,16 +1142,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Builder(
-            builder: (btnContext) {
-              return InkWell(
-                onTap: () => _showScopeMenuAt(btnContext),
-                child: const Text(
-                  'Change',
-                  style: TextStyle(color: Color(0xFF1A73E8), fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins'),
-                ),
-              );
-            },
+          InkWell(
+            onTap: _showChooseAreaPicker,
+            child: const Text(
+              'Choose Area',
+              style: TextStyle(color: Color(0xFF1A73E8), fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins'),
+            ),
           ),
         ],
       ),

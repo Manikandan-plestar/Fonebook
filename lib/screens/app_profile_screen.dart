@@ -536,7 +536,6 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
             AppHeader(
               title: 'My Account',
               showMenu: true,
-              onBack: widget.isMandatoryOnboarding ? null : () => Navigator.pop(context),
               api: widget.api,
               session: widget.session,
               store: SessionStore(),
