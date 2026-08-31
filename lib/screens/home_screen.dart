@@ -447,27 +447,29 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      // Fetch fresh live data in parallel (guarantees newly created business profiles are included)
-      final results = await Future.wait([
-        widget.api.get('check-contact', {
-          'type': 'search',
-          'query': q.trim(),
-          'location': apiLocation,
-        }),
-        widget.api.get('check-contact', {
+      // 1. Fetch live search matches from backend for the specific query & location
+      final searchRes = await widget.api.get('check-contact', {
+        'type': 'search',
+        'query': q.trim(),
+        'location': apiLocation,
+      });
+
+      final searchData = searchRes is List ? searchRes as List : [];
+
+      // 2. Reuse preloaded directory list if available to avoid duplicate database download
+      List<dynamic> dirData = _cachedDirectoryList;
+      if (dirData.isEmpty) {
+        final allRes = await widget.api.get('check-contact', {
           'type': 'all',
           'location': '',
-        }),
-      ]);
-
-      final searchData = results[0] is List ? results[0] as List : [];
-      final dirData = results[1] is List ? results[1] as List : [];
-
-      if (dirData.isNotEmpty) {
-        _cachedDirectoryList = dirData
-            .where((item) => item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty)
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
+        });
+        if (allRes is List) {
+          dirData = allRes;
+          _cachedDirectoryList = dirData
+              .where((item) => item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty)
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList();
+        }
       }
 
       await _processAndRenderSearchResults(searchData, dirData, query);
@@ -488,10 +490,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final List<Map<String, dynamic>> combinedRaw = [];
+    final Set<String> seenKeys = {};
 
     for (final item in searchData) {
       if (item is Map && item['name'] != null && item['name'].toString().trim().isNotEmpty) {
-        combinedRaw.add(Map<String, dynamic>.from(item));
+        final mapItem = Map<String, dynamic>.from(item);
+        combinedRaw.add(mapItem);
+
+        final id = mapItem['id']?.toString() ?? '';
+        if (id.isNotEmpty) {
+          seenKeys.add("id_$id");
+        }
+        final phone = (mapItem['phone_no'] ?? mapItem['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+        final name = (mapItem['name'] ?? '').toString().trim().toLowerCase();
+        final service = (mapItem['service'] ?? '').toString().trim().toLowerCase();
+        if (phone.isNotEmpty) {
+          seenKeys.add("pns_${phone}_${name}_${service}");
+        }
       }
     }
 
@@ -502,17 +517,10 @@ class _HomeScreenState extends State<HomeScreen> {
         final name = (item['name'] ?? '').toString().trim().toLowerCase();
         final service = (item['service'] ?? '').toString().trim().toLowerCase();
 
-        final alreadyExists = combinedRaw.any((c) {
-          final cId = c['id']?.toString() ?? '';
-          if (id.isNotEmpty && cId.isNotEmpty) {
-            return cId == id;
-          }
-          final cPhone = (c['phone_no'] ?? c['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-          final cName = (c['name'] ?? '').toString().trim().toLowerCase();
-          final cService = (c['service'] ?? '').toString().trim().toLowerCase();
-          return cPhone.isNotEmpty && phone.isNotEmpty && cPhone == phone && cName == name && cService == service;
-        });
-        if (!alreadyExists) {
+        final isIdSeen = id.isNotEmpty && seenKeys.contains("id_$id");
+        final isPnsSeen = phone.isNotEmpty && seenKeys.contains("pns_${phone}_${name}_${service}");
+
+        if (!isIdSeen && !isPnsSeen) {
           combinedRaw.add(Map<String, dynamic>.from(item));
         }
       }
@@ -617,7 +625,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (nameMatch || titleMatch || phoneMatch) {
         final cCleanPhone = _normalizePhone(c.phone);
 
-        // Check if candidateMap already has business profile(s) for this phone
         final alreadyHasProfile = candidateMap.values.any((item) {
           final itemPhone = _normalizePhone(item.phone);
           return cCleanPhone.isNotEmpty && itemPhone.isNotEmpty && cCleanPhone == itemPhone;
@@ -641,11 +648,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final allCandidates = candidateMap.values.toList();
 
-    int getSearchScore(DirectoryContact c) {
+    // Prepare pre-computed metadata for fast sorting
+    final userGeo = await _getUserCurrentGeo();
+    final userArea = widget.session.place1 ?? widget.session.place ?? '';
+    final userAreaLower = (userArea.isEmpty || userArea.toLowerCase() == 'current location') ? '' : userArea.toLowerCase();
+    final userAreaParts = userAreaLower.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty && p != 'current location').toList();
+    final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+
+    int calcSearchScore(DirectoryContact c) {
       final serviceLower = c.service.toLowerCase().trim();
       final keywordText = '${c.keyword ?? ''} ${c.tags ?? ''} ${c.additionalServices ?? ''}'.toLowerCase().trim();
       final nameLower = c.name.toLowerCase().trim();
-      final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
 
       if (serviceLower == query) return 1;
       if (serviceLower.startsWith(query)) return 2;
@@ -665,116 +678,77 @@ class _HomeScreenState extends State<HomeScreen> {
       return 8;
     }
 
-    // Resolve user's current GPS location coordinates and profile coordinates
-    final userGeo = await _getUserCurrentGeo();
-    final resolvedCoords = await LocationService.resolveMultipleCoordinates(allCandidates);
-
-    double getDistanceMeters(DirectoryContact c) {
-      if (userGeo == null) return double.infinity;
-      final key = c.id ?? c.phone;
-      final geo = resolvedCoords[key] ?? (c.latitude != null && c.longitude != null ? GeoPoint(c.latitude!, c.longitude!) : null);
-      if (geo != null) {
-        return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, geo.latitude, geo.longitude);
-      }
-      return double.infinity;
-    }
-
-    int getPriorityTier(DirectoryContact c) {
-      if (_isMyContactMatch(c)) return 1; // My Contact always Tier 1
+    int calcPriorityTier(DirectoryContact c) {
+      if (_isMyContactMatch(c)) return 1; // My Contact Tier 1
       final bal = double.tryParse(c.priorityBalance) ?? 0.0;
       if (bal > 0 || c.priority == '0') return 2; // Sponsored Tier 2
       return 3; // Normal Profile Tier 3
     }
 
-    int getLocationHierarchyTier(DirectoryContact c) {
-      final userArea = widget.session.place1 ?? widget.session.place ?? '';
-      if (userArea.isEmpty || userArea.toLowerCase() == 'current location') return 5;
-      
+    int calcLocationHierarchyTier(DirectoryContact c) {
+      if (userAreaLower.isEmpty) return 5;
       final fullText = '${c.location ?? ''} ${c.location1 ?? ''} ${c.city ?? ''} ${c.state ?? ''}'.toLowerCase().trim();
       if (fullText.isEmpty) return 6;
-      
-      final parts = userArea.split(',').map((p) => p.trim().toLowerCase()).where((p) => p.isNotEmpty).toList();
-      for (final p in parts) {
-        if (p == 'current location') continue;
-        if (fullText.contains(p)) return 1; // Direct area match
+      for (final p in userAreaParts) {
+        if (fullText.contains(p)) return 1;
       }
-      
-      if (c.city != null && c.city!.isNotEmpty && userArea.toLowerCase().contains(c.city!.toLowerCase())) return 2; // City match
-      if (c.state != null && c.state!.isNotEmpty && userArea.toLowerCase().contains(c.state!.toLowerCase())) return 3; // State match
-      return 4; // Other locations
+      if (c.city != null && c.city!.isNotEmpty && userAreaLower.contains(c.city!.toLowerCase())) return 2;
+      if (c.state != null && c.state!.isNotEmpty && userAreaLower.contains(c.state!.toLowerCase())) return 3;
+      return 4;
     }
 
-    // Master Single Comparator: My Contact (1) -> Sponsored (2) -> Distance from User Location (3)
-    allCandidates.sort((a, b) {
-      // 1. Compare Priority Tier (Tier 1: My Contact < Tier 2: Sponsored < Tier 3: Normal)
-      final tierA = getPriorityTier(a);
-      final tierB = getPriorityTier(b);
-      if (tierA != tierB) {
-        return tierA.compareTo(tierB);
+    double calcDistanceMeters(DirectoryContact c) {
+      if (userGeo != null && c.latitude != null && c.longitude != null) {
+        return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, c.latitude!, c.longitude!);
+      }
+      return double.infinity;
+    }
+
+    final List<_CandidateWrapper> wrappers = allCandidates.map((c) {
+      return _CandidateWrapper(
+        contact: c,
+        priorityTier: calcPriorityTier(c),
+        searchScore: calcSearchScore(c),
+        priorityBalance: double.tryParse(c.priorityBalance) ?? 0.0,
+        distanceMeters: calcDistanceMeters(c),
+        locationHierarchyTier: calcLocationHierarchyTier(c),
+        nameLower: c.name.toLowerCase(),
+      );
+    }).toList();
+
+    wrappers.sort((a, b) {
+      if (a.priorityTier != b.priorityTier) return a.priorityTier.compareTo(b.priorityTier);
+
+      if (a.priorityTier == 1) {
+        if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
+        if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
+        return a.nameLower.compareTo(b.nameLower);
       }
 
-      // 2. Within Tier 1 (My Contacts)
-      if (tierA == 1) {
-        final scoreA = getSearchScore(a);
-        final scoreB = getSearchScore(b);
-        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
-
-        final distA = getDistanceMeters(a);
-        final distB = getDistanceMeters(b);
-        if (distA != distB) return distA.compareTo(distB);
-
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      if (a.priorityTier == 2) {
+        if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
+        if (a.priorityBalance != b.priorityBalance) return b.priorityBalance.compareTo(a.priorityBalance);
+        if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
+        return a.nameLower.compareTo(b.nameLower);
       }
 
-      // 3. Within Tier 2 (Sponsored Profiles)
-      if (tierA == 2) {
-        final scoreA = getSearchScore(a);
-        final scoreB = getSearchScore(b);
-        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
-
-        final aBal = double.tryParse(a.priorityBalance) ?? 0.0;
-        final bBal = double.tryParse(b.priorityBalance) ?? 0.0;
-        if (aBal != bBal) return bBal.compareTo(aBal);
-
-        final distA = getDistanceMeters(a);
-        final distB = getDistanceMeters(b);
-        if (distA != distB) return distA.compareTo(distB);
-
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      }
-
-      // 4. Within Tier 3 (Normal Directory Profiles)
-      // Search match score
-      final scoreA = getSearchScore(a);
-      final scoreB = getSearchScore(b);
-      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
-
-      // Geographical distance from user's current location (Nearest to Farthest)
-      final distA = getDistanceMeters(a);
-      final distB = getDistanceMeters(b);
-      if (distA != distB) return distA.compareTo(distB);
-
-      // Fallback location hierarchy tier (if distance is unresolved)
-      final hTierA = getLocationHierarchyTier(a);
-      final hTierB = getLocationHierarchyTier(b);
-      if (hTierA != hTierB) return hTierA.compareTo(hTierB);
-
-      // Verification status
-      if (a.verified != b.verified) {
-        return b.verified.compareTo(a.verified);
-      }
-
-      // Alphabetical name tie-breaker
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      // Tier 3 (Normal Directory Profiles)
+      if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
+      if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
+      if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
+      if (a.contact.verified != b.contact.verified) return b.contact.verified.compareTo(a.contact.verified);
+      return a.nameLower.compareTo(b.nameLower);
     });
 
-    final myContactCount = allCandidates.where((c) => getPriorityTier(c) == 1).length;
-    final sponsoredCount = allCandidates.where((c) => getPriorityTier(c) == 2).length;
-    final sponsoredList = allCandidates.where((c) => getPriorityTier(c) == 2).toList();
+    final sortedCandidates = wrappers.map((w) => w.contact).toList();
+
+    final myContactCount = sortedCandidates.where((c) => calcPriorityTier(c) == 1).length;
+    final sponsoredCount = sortedCandidates.where((c) => calcPriorityTier(c) == 2).length;
+    final sponsoredList = sortedCandidates.where((c) => calcPriorityTier(c) == 2).toList();
 
     if (mounted) {
       setState(() {
-        _results = allCandidates;
+        _results = sortedCandidates;
         _localMatchCount = myContactCount;
         _sponsoredCount = sponsoredCount;
         _loading = false;
@@ -1538,4 +1512,24 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 }
+}
+
+class _CandidateWrapper {
+  final DirectoryContact contact;
+  final int priorityTier;
+  final int searchScore;
+  final double priorityBalance;
+  final double distanceMeters;
+  final int locationHierarchyTier;
+  final String nameLower;
+
+  _CandidateWrapper({
+    required this.contact,
+    required this.priorityTier,
+    required this.searchScore,
+    required this.priorityBalance,
+    required this.distanceMeters,
+    required this.locationHierarchyTier,
+    required this.nameLower,
+  });
 }
