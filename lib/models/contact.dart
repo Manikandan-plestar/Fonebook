@@ -34,6 +34,8 @@ class DirectoryContact {
   final String? additionalPhones;
   final String? additionalServices;
   final List<dynamic>? reviews;
+  final double? latitude;
+  final double? longitude;
 
   const DirectoryContact({
     this.id,
@@ -64,6 +66,8 @@ class DirectoryContact {
     this.additionalPhones,
     this.additionalServices,
     this.reviews,
+    this.latitude,
+    this.longitude,
   });
 
   static final Map<String, int> _sessionBusters = {};
@@ -84,6 +88,9 @@ class DirectoryContact {
   factory DirectoryContact.fromJson(Map<String, dynamic> json) {
     String p(String k) => json[k]?.toString() ?? '';
     final idVal = p('id');
+    final lat = double.tryParse(p('latitude')) ?? double.tryParse(p('lat'));
+    final lng = double.tryParse(p('longitude')) ?? double.tryParse(p('lng')) ?? double.tryParse(p('lon'));
+
     return DirectoryContact(
       id: idVal.isNotEmpty ? idVal : null,
       name: p('name'),
@@ -113,6 +120,8 @@ class DirectoryContact {
       additionalPhones: p('phonenos'),
       additionalServices: p('services'),
       reviews: json['reviews'] is List ? json['reviews'] : null,
+      latitude: lat,
+      longitude: lng,
     );
   }
 
@@ -141,5 +150,7 @@ class DirectoryContact {
         'show_contact': showContact,
         'publish': publish,
         'time': timestamp,
+        if (latitude != null) 'latitude': latitude.toString(),
+        if (longitude != null) 'longitude': longitude.toString(),
       };
 }

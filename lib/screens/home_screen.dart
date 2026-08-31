@@ -16,6 +16,7 @@ import 'my_contacts_screen.dart';
 
 import '../services/countries.dart';
 import '../widgets/country_picker_dialog.dart';
+import '../services/location_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.api, required this.store, required this.session, required this.onSearchModeChanged});
@@ -44,6 +45,63 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _selectedLocation; // For filtering
   bool _userHasCustomScope = false;
   List<Map<String, dynamic>> _cachedDirectoryList = [];
+  GeoPoint? _currentUserGeo;
+
+  String _normalizePhone(String? p) {
+    if (p == null) return '';
+    final d = p.replaceAll(RegExp(r'[^0-9]'), '');
+    return d.length >= 10 ? d.substring(d.length - 10) : d;
+  }
+
+  bool _isMyContactMatch(DirectoryContact c) {
+    if (c.category == 'my_contact') return true;
+    final cPhone = _normalizePhone(c.phone);
+    if (cPhone.isNotEmpty) {
+      for (final l in _localContacts) {
+        final lPhone = _normalizePhone(l.phone);
+        if (lPhone.isNotEmpty && lPhone == cPhone) return true;
+      }
+    }
+    return false;
+  }
+
+  Future<GeoPoint?> _getUserCurrentGeo() async {
+    if (_currentUserGeo != null) return _currentUserGeo;
+
+    try {
+      Position? position = await Geolocator.getLastKnownPosition();
+      position ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 3),
+        ),
+      );
+      if (position != null) {
+        _currentUserGeo = GeoPoint(position.latitude, position.longitude);
+        return _currentUserGeo;
+      }
+    } catch (_) {}
+
+    final place = widget.session.place1 ?? widget.session.place;
+    if (place != null && place.isNotEmpty && place != "Current Location") {
+      final geo = await LocationService.getCoordinatesForAddress(place);
+      if (geo != null) {
+        _currentUserGeo = geo;
+        return geo;
+      }
+    }
+
+    final country = widget.session.country;
+    if (country != null && country.isNotEmpty && country != "All") {
+      final geo = await LocationService.getCoordinatesForAddress(country);
+      if (geo != null) {
+        _currentUserGeo = geo;
+        return geo;
+      }
+    }
+
+    return null;
+  }
 
   void _onSearchChanged(String v) {
     if (v.trim().isEmpty) {
@@ -186,6 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (!kIsWeb && position != null) {
+          _currentUserGeo = GeoPoint(position.latitude, position.longitude);
           List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
           if (placemarks.isNotEmpty) {
             Placemark p = placemarks.first;
@@ -411,7 +470,7 @@ class _HomeScreenState extends State<HomeScreen> {
             .toList();
       }
 
-      _processAndRenderSearchResults(searchData, dirData, query);
+      await _processAndRenderSearchResults(searchData, dirData, query);
     } catch (e) {
       debugPrint("Search error: $e");
     } finally {
@@ -421,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _processAndRenderSearchResults(List<dynamic> searchData, List<dynamic> dirData, String query) {
+  Future<void> _processAndRenderSearchResults(List<dynamic> searchData, List<dynamic> dirData, String query) async {
     final cleanQ = query.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
     String apiLocation = '';
     if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
@@ -463,113 +522,129 @@ class _HomeScreenState extends State<HomeScreen> {
         .map((e) => DirectoryContact.fromJson(e))
         .toList();
 
-    final localMatches = _localContacts.where((c) {
+    final Map<String, DirectoryContact> candidateMap = {};
+
+    // 1. Process all directory API contacts matching search and location filter
+    for (final e in rawApiList) {
+      if (apiLocation.isNotEmpty && !_matchesSelectedLocation(e, apiLocation)) {
+        continue;
+      }
+
+      final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+      final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+
+      final serviceMatch = e.service.toLowerCase().contains(query) ||
+          queryWords.any((w) => w.length > 1 && e.service.toLowerCase().contains(w));
+
+      final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
+          (e.tags?.toLowerCase().contains(query) ?? false) ||
+          (e.additionalServices?.toLowerCase().contains(query) ?? false) ||
+          queryWords.any((w) =>
+              w.length > 1 &&
+              ((e.keyword?.toLowerCase().contains(w) ?? false) ||
+               (e.tags?.toLowerCase().contains(w) ?? false) ||
+               (e.additionalServices?.toLowerCase().contains(w) ?? false)));
+
+      final nameMatch = e.name.toLowerCase().contains(query);
+      final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
+
+      if (nameMatch && !serviceMatch && !keywordMatch && !phoneMatch) {
+        continue;
+      }
+
+      final textMatch = serviceMatch || keywordMatch || phoneMatch;
+      if (!textMatch) continue;
+
+      final who = (e.whoContact ?? 'international').toLowerCase();
+      if (who != 'international' && who != 'all' && who.isNotEmpty) {
+        final isLocationSearch = _scopeLabel.startsWith('Location(');
+        final isCountrySearch = _scopeLabel.startsWith('Country(');
+        final isInternationalSearch = _scopeLabel == 'International';
+
+        if (who == 'country' && !(isLocationSearch || isCountrySearch || isInternationalSearch)) {
+          continue;
+        }
+        if (who == 'location' && !isLocationSearch) {
+          continue;
+        }
+      }
+
+      // Unique key per distinct API profile (preserving multiple distinct profiles with the same phone)
+      final String profileKey = (e.id != null && e.id!.isNotEmpty)
+          ? "api_id_${e.id}"
+          : "api_custom_${e.name.toLowerCase().trim()}_${_normalizePhone(e.phone)}_${e.service.toLowerCase().trim()}";
+
+      if (candidateMap.containsKey(profileKey)) {
+        continue;
+      }
+
+      final isMyContact = _isMyContactMatch(e);
+      if (isMyContact) {
+        candidateMap[profileKey] = DirectoryContact(
+          id: e.id,
+          name: e.name,
+          service: e.service,
+          phone: e.phone,
+          location: e.location,
+          location1: e.location1,
+          city: e.city,
+          state: e.state,
+          image: e.image,
+          keyword: e.keyword,
+          tags: e.tags,
+          verified: e.verified,
+          priority: e.priority,
+          priorityBalance: e.priorityBalance,
+          category: 'my_contact',
+          showContact: e.showContact,
+          additionalPhones: e.additionalPhones,
+          additionalServices: e.additionalServices,
+          latitude: e.latitude,
+          longitude: e.longitude,
+        );
+      } else {
+        candidateMap[profileKey] = e;
+      }
+    }
+
+    // 2. Process local contacts that do NOT have matching profiles in candidateMap
+    for (final c in _localContacts) {
       final cleanP = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
       final nameMatch = c.name.toLowerCase().contains(query);
       final titleMatch = c.title.toLowerCase().contains(query);
       final phoneMatch = cleanQ.isNotEmpty && cleanP.contains(cleanQ);
-      return nameMatch || titleMatch || phoneMatch;
-    }).map((c) {
-      final cCleanPhone = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-      
-      DirectoryContact? dirItem;
-      for (final apiItem in rawApiList) {
-        final apiCleanPhone = apiItem.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-        if (cCleanPhone.isNotEmpty && apiCleanPhone.isNotEmpty &&
-            (cCleanPhone == apiCleanPhone || cCleanPhone.endsWith(apiCleanPhone) || apiCleanPhone.endsWith(cCleanPhone))) {
-          dirItem = apiItem;
-          break;
+
+      if (nameMatch || titleMatch || phoneMatch) {
+        final cCleanPhone = _normalizePhone(c.phone);
+
+        // Check if candidateMap already has business profile(s) for this phone
+        final alreadyHasProfile = candidateMap.values.any((item) {
+          final itemPhone = _normalizePhone(item.phone);
+          return cCleanPhone.isNotEmpty && itemPhone.isNotEmpty && cCleanPhone == itemPhone;
+        });
+
+        if (!alreadyHasProfile) {
+          final localKey = "local_${c.id ?? cCleanPhone}_${c.name.toLowerCase().trim()}";
+          candidateMap[localKey] = DirectoryContact(
+            id: c.id?.toString(),
+            name: c.name,
+            service: c.title.isNotEmpty && c.title != 'My Contact' ? c.title : '',
+            phone: c.phone,
+            priority: '1',
+            priorityBalance: '0',
+            category: 'my_contact',
+            showContact: 'mwelsf',
+          );
         }
       }
+    }
 
-      final serviceStr = (c.title.isNotEmpty && c.title != 'My Contact')
-          ? c.title
-          : (dirItem?.service.isNotEmpty == true ? dirItem!.service : '');
-
-      final locStr = (dirItem?.location?.isNotEmpty == true)
-          ? dirItem!.location
-          : null;
-
-      return DirectoryContact(
-        name: c.name,
-        service: serviceStr,
-        phone: c.phone,
-        location: locStr,
-        location1: dirItem?.location1,
-        city: dirItem?.city,
-        state: dirItem?.state,
-        image: dirItem?.image,
-        priority: '1',
-        priorityBalance: '0',
-        category: 'my_contact',
-        showContact: 'mwelsf',
-      );
-    }).toList();
-
-    final apiResults = rawApiList
-        .where((e) {
-          if (apiLocation.isNotEmpty && !_matchesSelectedLocation(e, apiLocation)) {
-            return false;
-          }
-
-          final cleanPhone = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-          final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-
-          final serviceMatch = e.service.toLowerCase().contains(query) ||
-              queryWords.any((w) => w.length > 1 && e.service.toLowerCase().contains(w));
-
-          final keywordMatch = (e.keyword?.toLowerCase().contains(query) ?? false) ||
-              (e.tags?.toLowerCase().contains(query) ?? false) ||
-              (e.additionalServices?.toLowerCase().contains(query) ?? false) ||
-              queryWords.any((w) =>
-                  w.length > 1 &&
-                  ((e.keyword?.toLowerCase().contains(w) ?? false) ||
-                   (e.tags?.toLowerCase().contains(w) ?? false) ||
-                   (e.additionalServices?.toLowerCase().contains(w) ?? false)));
-
-          final nameMatch = e.name.toLowerCase().contains(query);
-          final phoneMatch = cleanQ.isNotEmpty && cleanPhone.contains(cleanQ);
-
-          if (nameMatch && !serviceMatch && !keywordMatch && !phoneMatch) {
-            return false;
-          }
-
-          final textMatch = serviceMatch || keywordMatch || phoneMatch;
-          if (!textMatch) return false;
-
-          final who = (e.whoContact ?? 'international').toLowerCase();
-          if (who == 'international' || who == 'all' || who.isEmpty) {
-            return true;
-          }
-
-          final isLocationSearch = _scopeLabel.startsWith('Location(');
-          final isCountrySearch = _scopeLabel.startsWith('Country(');
-          final isInternationalSearch = _scopeLabel == 'International';
-
-          if (who == 'country') {
-            return isLocationSearch || isCountrySearch || isInternationalSearch;
-          }
-
-          if (who == 'location') {
-            return isLocationSearch;
-          }
-
-          return true;
-        })
-        .where((e) => !localMatches.any((l) {
-          if (e.id != null && e.id!.isNotEmpty && l.id != null && l.id!.isNotEmpty) {
-            return l.id == e.id;
-          }
-          final lClean = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-          final eClean = e.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-          return l.name.toLowerCase().trim() == e.name.toLowerCase().trim() &&
-                 lClean.isNotEmpty && eClean.isNotEmpty && lClean == eClean;
-        }))
-        .toList();
+    final allCandidates = candidateMap.values.toList();
 
     int getSearchScore(DirectoryContact c) {
       final serviceLower = c.service.toLowerCase().trim();
       final keywordText = '${c.keyword ?? ''} ${c.tags ?? ''} ${c.additionalServices ?? ''}'.toLowerCase().trim();
+      final nameLower = c.name.toLowerCase().trim();
       final queryWords = query.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
 
       if (serviceLower == query) return 1;
@@ -585,63 +660,129 @@ class _HomeScreenState extends State<HomeScreen> {
       final matchesKeywordWord = queryWords.any((qw) => keywordWords.any((kw) => kw == qw || (kw.length > 2 && kw.contains(qw))));
       if (matchesKeywordWord) return 6;
 
-      return 7;
+      if (nameLower.contains(query)) return 7;
+
+      return 8;
     }
 
-    localMatches.sort((a, b) {
-      final scoreA = getSearchScore(a);
-      final scoreB = getSearchScore(b);
-      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
+    // Resolve user's current GPS location coordinates and profile coordinates
+    final userGeo = await _getUserCurrentGeo();
+    final resolvedCoords = await LocationService.resolveMultipleCoordinates(allCandidates);
 
-    final sponsoredMatches = <DirectoryContact>[];
-    final normalApiMatches = <DirectoryContact>[];
-
-    for (final item in apiResults) {
-      final bal = double.tryParse(item.priorityBalance) ?? 0.0;
-      final isPromoted = bal > 0;
-      if (isPromoted) {
-        sponsoredMatches.add(item);
-      } else {
-        normalApiMatches.add(item);
+    double getDistanceMeters(DirectoryContact c) {
+      if (userGeo == null) return double.infinity;
+      final key = c.id ?? c.phone;
+      final geo = resolvedCoords[key] ?? (c.latitude != null && c.longitude != null ? GeoPoint(c.latitude!, c.longitude!) : null);
+      if (geo != null) {
+        return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, geo.latitude, geo.longitude);
       }
+      return double.infinity;
     }
 
-    sponsoredMatches.sort((a, b) {
+    int getPriorityTier(DirectoryContact c) {
+      if (_isMyContactMatch(c)) return 1; // My Contact always Tier 1
+      final bal = double.tryParse(c.priorityBalance) ?? 0.0;
+      if (bal > 0 || c.priority == '0') return 2; // Sponsored Tier 2
+      return 3; // Normal Profile Tier 3
+    }
+
+    int getLocationHierarchyTier(DirectoryContact c) {
+      final userArea = widget.session.place1 ?? widget.session.place ?? '';
+      if (userArea.isEmpty || userArea.toLowerCase() == 'current location') return 5;
+      
+      final fullText = '${c.location ?? ''} ${c.location1 ?? ''} ${c.city ?? ''} ${c.state ?? ''}'.toLowerCase().trim();
+      if (fullText.isEmpty) return 6;
+      
+      final parts = userArea.split(',').map((p) => p.trim().toLowerCase()).where((p) => p.isNotEmpty).toList();
+      for (final p in parts) {
+        if (p == 'current location') continue;
+        if (fullText.contains(p)) return 1; // Direct area match
+      }
+      
+      if (c.city != null && c.city!.isNotEmpty && userArea.toLowerCase().contains(c.city!.toLowerCase())) return 2; // City match
+      if (c.state != null && c.state!.isNotEmpty && userArea.toLowerCase().contains(c.state!.toLowerCase())) return 3; // State match
+      return 4; // Other locations
+    }
+
+    // Master Single Comparator: My Contact (1) -> Sponsored (2) -> Distance from User Location (3)
+    allCandidates.sort((a, b) {
+      // 1. Compare Priority Tier (Tier 1: My Contact < Tier 2: Sponsored < Tier 3: Normal)
+      final tierA = getPriorityTier(a);
+      final tierB = getPriorityTier(b);
+      if (tierA != tierB) {
+        return tierA.compareTo(tierB);
+      }
+
+      // 2. Within Tier 1 (My Contacts)
+      if (tierA == 1) {
+        final scoreA = getSearchScore(a);
+        final scoreB = getSearchScore(b);
+        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+
+        final distA = getDistanceMeters(a);
+        final distB = getDistanceMeters(b);
+        if (distA != distB) return distA.compareTo(distB);
+
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+
+      // 3. Within Tier 2 (Sponsored Profiles)
+      if (tierA == 2) {
+        final scoreA = getSearchScore(a);
+        final scoreB = getSearchScore(b);
+        if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+
+        final aBal = double.tryParse(a.priorityBalance) ?? 0.0;
+        final bBal = double.tryParse(b.priorityBalance) ?? 0.0;
+        if (aBal != bBal) return bBal.compareTo(aBal);
+
+        final distA = getDistanceMeters(a);
+        final distB = getDistanceMeters(b);
+        if (distA != distB) return distA.compareTo(distB);
+
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+
+      // 4. Within Tier 3 (Normal Directory Profiles)
+      // Search match score
       final scoreA = getSearchScore(a);
       final scoreB = getSearchScore(b);
       if (scoreA != scoreB) return scoreA.compareTo(scoreB);
 
-      final aBal = double.tryParse(a.priorityBalance) ?? 0.0;
-      final bBal = double.tryParse(b.priorityBalance) ?? 0.0;
-      return bBal.compareTo(aBal);
-    });
+      // Geographical distance from user's current location (Nearest to Farthest)
+      final distA = getDistanceMeters(a);
+      final distB = getDistanceMeters(b);
+      if (distA != distB) return distA.compareTo(distB);
 
-    normalApiMatches.sort((a, b) {
-      final scoreA = getSearchScore(a);
-      final scoreB = getSearchScore(b);
-      if (scoreA != scoreB) return scoreA.compareTo(scoreB);
+      // Fallback location hierarchy tier (if distance is unresolved)
+      final hTierA = getLocationHierarchyTier(a);
+      final hTierB = getLocationHierarchyTier(b);
+      if (hTierA != hTierB) return hTierA.compareTo(hTierB);
 
+      // Verification status
       if (a.verified != b.verified) {
         return b.verified.compareTo(a.verified);
       }
-      return 0;
+
+      // Alphabetical name tie-breaker
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
 
-    final combined = [...localMatches, ...sponsoredMatches, ...normalApiMatches];
+    final myContactCount = allCandidates.where((c) => getPriorityTier(c) == 1).length;
+    final sponsoredCount = allCandidates.where((c) => getPriorityTier(c) == 2).length;
+    final sponsoredList = allCandidates.where((c) => getPriorityTier(c) == 2).toList();
 
     if (mounted) {
       setState(() {
-        _results = combined;
-        _localMatchCount = localMatches.length;
-        _sponsoredCount = sponsoredMatches.length;
+        _results = allCandidates;
+        _localMatchCount = myContactCount;
+        _sponsoredCount = sponsoredCount;
         _loading = false;
       });
     }
 
-    if (sponsoredMatches.isNotEmpty) {
-      _processSponsoredDeductions(sponsoredMatches, query);
+    if (sponsoredList.isNotEmpty) {
+      _processSponsoredDeductions(sponsoredList, query);
     }
   }
 
@@ -691,7 +832,10 @@ class _HomeScreenState extends State<HomeScreen> {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        Position position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        );
+        _currentUserGeo = GeoPoint(position.latitude, position.longitude);
         
         String cityArea = "Current Location";
         
@@ -758,7 +902,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        Position position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        );
         
         if (!kIsWeb) {
           List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
@@ -1265,16 +1411,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (c, i) {
                   final contact = _results[i];
                   final isFav = _favs.any((e) => e.phone == contact.phone);
-                  final isMyContact = i < _localMatchCount || 
-                                      contact.category == 'my_contact' ||
-                                      _localContacts.any((l) {
-                                        final lPhone = l.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-                                        final cPhone = contact.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
-                                        return lPhone.isNotEmpty && cPhone.isNotEmpty && lPhone == cPhone;
-                                      });
+                  final isMyContact = _isMyContactMatch(contact);
                   final isSponsored = !isMyContact && 
-                                      i >= _localMatchCount && 
-                                      i < (_localMatchCount + _sponsoredCount);
+                                      ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
 
                   return ContactCard(
                     contact: contact,
