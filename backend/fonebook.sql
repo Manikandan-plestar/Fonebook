@@ -17949,6 +17949,7 @@ INSERT INTO `contacts` (`id`, `name`, `phone_no`, `phonenos`, `email`, `landline
 
 CREATE TABLE `reviews` (
   `id` int(11) NOT NULL,
+  `contact_id` int(11) DEFAULT NULL,
   `contact_phone` varchar(20) NOT NULL,
   `reviewer_name` varchar(200) NOT NULL,
   `reviewer_phone` varchar(20) NOT NULL,

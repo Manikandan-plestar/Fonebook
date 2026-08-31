@@ -1111,11 +1111,12 @@ app.get('/check_search_type', (req, res) => {
         if (contactResult.length === 0) return res.status(200).json([{ error: 'No data' }]);
 
         let contactData = contactResult[0];
+        const contactId = contactData.id;
         const contactPhone = (contactData.phone_no || phone).replace(/\s+/g, '');
-        // Query 2: Get Reviews for this contact
-        var reviewsSql = `SELECT * FROM reviews WHERE contact_phone = ? ORDER BY created DESC;`;
+        // Query 2: Get Reviews for this contact using Business Profile ID (contact_id)
+        var reviewsSql = `SELECT * FROM reviews WHERE contact_id = ? ORDER BY created DESC;`;
 
-        db.query(reviewsSql, [contactPhone], (revErr, reviewsResult) => {
+        db.query(reviewsSql, [contactId], (revErr, reviewsResult) => {
             if (revErr) return res.status(200).json([{ error: 'Error reviews' }]);
 
             // MERGE: Add the reviews list into the contact object
@@ -1156,6 +1157,7 @@ app.get('/check_search_type1', (req, res) => {
 });
 app.post('/save_review', (req, res) => {
     // Extract data from the Flutter app's POST request
+    const contact_id = req.body.contact_id;
     const contact_phone = req.body.contact_phone;
     const reviewer_name = req.body.reviewer_name;
     const reviewer_phone = req.body.reviewer_phone;
@@ -1163,19 +1165,20 @@ app.post('/save_review', (req, res) => {
     const comment = req.body.comment;
 
     // Simple validation
-    if (!contact_phone || !reviewer_name || !rating) {
+    if ((!contact_id && !contact_phone) || !reviewer_name || !rating) {
         return res.status(200).json({ error: 'Missing required fields' });
     }
 
     const saveReviewSql = `
-        INSERT INTO reviews (contact_phone, reviewer_name, reviewer_phone, rating, comment) 
-        VALUES (?, ?, ?, ?, ?);
+        INSERT INTO reviews (contact_id, contact_phone, reviewer_name, reviewer_phone, rating, comment) 
+        VALUES (?, ?, ?, ?, ?, ?);
     `;
 
     const values = [
-        contact_phone.replace(/\s+/g, ''),
+        contact_id || null,
+        contact_phone ? contact_phone.replace(/\s+/g, '') : '',
         reviewer_name,
-        reviewer_phone.replace(/\s+/g, ''),
+        reviewer_phone ? reviewer_phone.replace(/\s+/g, '') : '',
         rating,
         comment
     ];

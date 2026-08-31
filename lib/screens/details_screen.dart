@@ -72,12 +72,14 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
   }
 
   void _showAddReviewSheet() {
+    final c = _fullContact ?? widget.contact;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AddReviewBottomSheet(
-        contactPhone: widget.contact.phone,
+        contactId: c.id,
+        contactPhone: c.phone,
         reviewerName: _session?.email?.split('@')[0] ?? 'Guest',
         reviewerPhone: _session?.phone ?? '',
         onSuccess: _load,
@@ -675,12 +677,14 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
 }
 
 class _AddReviewBottomSheet extends StatefulWidget {
+  final String? contactId;
   final String contactPhone;
   final String reviewerName;
   final String reviewerPhone;
   final VoidCallback onSuccess;
 
   const _AddReviewBottomSheet({
+    this.contactId,
     required this.contactPhone,
     required this.reviewerName,
     required this.reviewerPhone,
@@ -706,6 +710,7 @@ class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
     setState(() => _isSubmitting = true);
     try {
       final res = await ApiClient().post('save_review', {
+        if (widget.contactId != null) 'contact_id': widget.contactId,
         'contact_phone': widget.contactPhone,
         'reviewer_name': widget.reviewerName,
         'reviewer_phone': widget.reviewerPhone,
