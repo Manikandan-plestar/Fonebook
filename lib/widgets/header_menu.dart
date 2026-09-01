@@ -114,7 +114,7 @@ class _HeaderMenuState extends State<HeaderMenu> {
           },
           itemBuilder: (c) => [
             const PopupMenuItem(value: 'My Account', child: Text('My Account')),
-            const PopupMenuItem(value: 'Business', child: Text('Busines')),
+            const PopupMenuItem(value: 'Business', child: Text('Business')),
             const PopupMenuItem(value: 'Keywords', child: Text('Keywords')),
             const PopupMenuItem(value: 'Promote', child: Text('Promote')),
             const PopupMenuItem(value: 'Favourites', child: Text('Favourites')),
