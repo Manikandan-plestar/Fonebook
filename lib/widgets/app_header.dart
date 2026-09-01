@@ -78,17 +78,9 @@ class _AppHeaderState extends State<AppHeader> {
           ),
           child: Row(
             children: [
-              if (widget.onBack != null && !_isSearching)
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.arrow_back, color: Colors.black), 
-                  onPressed: widget.onBack
-                ),
-              
               if (!_isSearching)
                 Padding(
-                  padding: const EdgeInsets.only(left: 4),
+                  padding: const EdgeInsets.only(left: 8),
                   child: Image.asset('assets/images/phone_book_logo_round.png', width: 34, height: 34, fit: BoxFit.contain),
                 ),
 

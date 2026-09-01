@@ -96,6 +96,45 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     }
   }
 
+  Future<void> _openWhatsApp() async {
+    final wpNum = (widget.contact.whatsapp != null &&
+            widget.contact.whatsapp!.isNotEmpty &&
+            widget.contact.whatsapp != 'null')
+        ? widget.contact.whatsapp!
+        : widget.contact.phone;
+
+    var cleanPhone = wpNum.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPhone.length == 10) {
+      cleanPhone = '91$cleanPhone';
+    }
+
+    if (cleanPhone.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WhatsApp number not available')),
+        );
+      }
+      return;
+    }
+
+    final uri = Uri.parse('https://wa.me/$cleanPhone');
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WhatsApp is not installed or number is not registered on WhatsApp')),
+        );
+      }
+    } catch (e) {
+      debugPrint('WhatsApp launch error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WhatsApp is not installed or number is not registered on WhatsApp')),
+        );
+      }
+    }
+  }
+
   Future<void> _sendSms() async {
     final cleanPhone = widget.contact.phone.replaceAll(RegExp(r'[\s\-\(\)]'), '');
     final uri = Uri.parse('sms:$cleanPhone');
@@ -236,14 +275,12 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     final displayPhone = widget.contact.phone;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF202124)),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text(
           'Call Details',
           style: TextStyle(color: Color(0xFF202124), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins'),
@@ -253,7 +290,7 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF4C5B8F)))
           : Column(
               children: [
-                // Top Header Box (Horizontal Layout)
+                // Top Header Box
                 Container(
                   color: Colors.white,
                   padding: const EdgeInsets.all(20),
@@ -315,14 +352,14 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _sendSms,
-                              icon: const Icon(Icons.message, size: 18, color: Color(0xFF1A73E8)),
+                              onPressed: _openWhatsApp,
+                              icon: Image.asset('assets/images/whatsapp.png', width: 20, height: 20),
                               label: const Text(
-                                'Message',
-                                style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF1A73E8)),
+                                'WhatsApp',
+                                style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF25D366)),
                               ),
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFF1A73E8)),
+                                side: const BorderSide(color: Color(0xFF25D366)),
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                               ),
