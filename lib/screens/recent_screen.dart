@@ -8,6 +8,7 @@ import '../models/user_session.dart';
 import '../models/contact.dart';
 import '../widgets/contact_card.dart';
 import '../widgets/app_header.dart';
+import 'call_details_screen.dart';
 
 class RecentScreen extends StatefulWidget {
   final ApiClient api;
@@ -286,7 +287,17 @@ class _RecentScreenState extends State<RecentScreen> {
                           await widget.store.toggleFavourite(contact);
                           _load();
                         },
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CallDetailsScreen(
+                                contact: contact,
+                                store: widget.store,
+                              ),
+                            ),
+                          ).then((_) => _load());
+                        },
                       ),
                     );
                   },

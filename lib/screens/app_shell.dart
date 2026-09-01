@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_client.dart';
 import '../services/session_store.dart';
 import '../models/user_session.dart';
@@ -43,15 +44,18 @@ class _AppShellState extends State<AppShell> {
 
   void _refresh() => store.read().then((s) => setState(() => _session = s));
 
-  Future<bool> _onWillPop() async {
-    final isFirstRouteInCurrentTab = !await _navigatorKeys[_index].currentState!.maybePop();
-    if (isFirstRouteInCurrentTab) {
-      if (_index != 1) {
-        setState(() => _index = 1);
-        return false;
-      }
+  Future<void> _handlePop() async {
+    final navState = _navigatorKeys[_index].currentState;
+    if (navState != null && await navState.maybePop()) {
+      return;
     }
-    return isFirstRouteInCurrentTab;
+
+    if (_index != 1) {
+      setState(() => _index = 1);
+      return;
+    }
+
+    await SystemNavigator.pop();
   }
 
   @override
@@ -60,10 +64,7 @@ class _AppShellState extends State<AppShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final bool shouldPop = await _onWillPop();
-        if (shouldPop && context.mounted) {
-          Navigator.of(context).pop(result);
-        }
+        await _handlePop();
       },
       child: Scaffold(
         body: IndexedStack(

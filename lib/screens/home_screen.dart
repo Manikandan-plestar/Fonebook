@@ -18,27 +18,6 @@ import '../services/countries.dart';
 import '../widgets/country_picker_dialog.dart';
 import '../services/location_service.dart';
 
-class _NearbyCache {
-  static List<DirectoryContact>? profiles;
-  static GeoPoint? cachedGeo;
-  static String? cachedScopeKey;
-  static DateTime? cachedTime;
-  static bool isFetching = false;
-
-  static bool isValid(String? currentScope, GeoPoint? currentGeo) {
-    if (profiles == null || profiles!.isEmpty || cachedTime == null) return false;
-    if (DateTime.now().difference(cachedTime!).inMinutes > 20) return false;
-    if (cachedScopeKey != currentScope) return false;
-    if (currentGeo != null && cachedGeo != null) {
-      final dist = LocationService.calculateDistanceInMeters(
-        currentGeo.latitude, currentGeo.longitude, cachedGeo!.latitude, cachedGeo!.longitude
-      );
-      if (dist > 5000) return false;
-    }
-    return true;
-  }
-}
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.api, required this.store, required this.session, required this.onSearchModeChanged});
   final ApiClient api;
@@ -67,8 +46,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _userHasCustomScope = false;
   List<Map<String, dynamic>> _cachedDirectoryList = [];
   GeoPoint? _currentUserGeo;
-  List<DirectoryContact> _nearbyProfiles = [];
-  bool _loadingNearby = false;
 
   String _normalizePhone(String? p) {
     if (p == null) return '';
@@ -192,11 +169,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _focus.addListener(() {
       if (_focus.hasFocus) {
         _loadLocalContacts();
-        if (_NearbyCache.profiles != null && _NearbyCache.profiles!.isNotEmpty) {
-          _nearbyProfiles = _NearbyCache.profiles!;
-        } else {
-          _triggerBackgroundNearbyFetch();
-        }
         if (!_isSearching) {
           setState(() {
             _isSearching = true;
@@ -257,7 +229,6 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _cachedDirectoryList = list;
           });
-          _triggerBackgroundNearbyFetch();
         }
       }
     } catch (e) {
@@ -276,6 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        // Try last known position first for instant GPS city resolution
         Position? position = await Geolocator.getLastKnownPosition();
         position ??= await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
@@ -312,7 +284,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 _scopeLabel = "Location($cityArea)";
                 _selectedLocation = cityArea;
               });
-              _triggerBackgroundNearbyFetch(forceRefresh: true);
               if (_search.text.isNotEmpty) {
                 _doSearch(_search.text);
               }
@@ -361,6 +332,58 @@ class _HomeScreenState extends State<HomeScreen> {
             })
             .map((e) => MyContactItem.fromJson(Map<String, dynamic>.from(e)))
             .toList();
+        // Auto-update saved contacts matching old_phone from number_change notifications
+        for (final item in res) {
+          if (item is Map && item['category']?.toString().toLowerCase() == 'notification') {
+            try {
+              final appProfRaw = item['app_profile']?.toString() ?? '';
+              if (appProfRaw.isNotEmpty) {
+                final payload = jsonDecode(appProfRaw);
+                if (payload is Map && payload['type'] == 'number_change') {
+                  final oldPhone = payload['old_phone']?.toString() ?? '';
+                  final newPhone = payload['new_phone']?.toString() ?? '';
+                  final userName = payload['name']?.toString() ?? 'Contact';
+
+                  final oldClean = oldPhone.replaceAll(RegExp(r'[^0-9]'), '');
+                  final newClean = newPhone.replaceAll(RegExp(r'[^0-9]'), '');
+                  final old10 = oldClean.length >= 10 ? oldClean.substring(oldClean.length - 10) : oldClean;
+
+                  if (old10.isNotEmpty && newPhone.isNotEmpty && oldClean != newClean) {
+                    for (final c in parsed) {
+                      final cClean = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+                      final c10 = cClean.length >= 10 ? cClean.substring(cClean.length - 10) : cClean;
+                      if (c10 == old10 && c.phone != newPhone) {
+                        debugPrint('[HOME AUTO UPDATE] Updating contact ${c.name} phone from ${c.phone} to $newPhone');
+                        
+                        // Update saved contact row in database
+                        widget.api.post('update_my_contact', {
+                          'id': c.id?.toString(),
+                          'email': email,
+                          'owner_email': email,
+                          'name': c.name,
+                          'phone': newPhone,
+                          'phone_no': newPhone,
+                          'title': c.title,
+                          'category': c.category,
+                        }).catchError((err) {
+                          debugPrint('Error auto-updating contact DB: $err');
+                        });
+
+                        SessionStore().addNotification(
+                          title: 'Contact Phone Updated',
+                          message: '$userName changed their mobile number. Saved contact "${c.name}" was automatically updated to $newPhone.',
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              debugPrint('Home auto-update parse error: $err');
+            }
+          }
+        }
+
         list.addAll(parsed);
       }
 
@@ -399,6 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final fullText = '$cLoc $cLoc1 $cCity $cState'.trim();
 
+    // If contact has no location info specified, do not arbitrarily drop it
     if (fullText.isEmpty) {
       return true;
     }
@@ -436,6 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
+      // 1. Fetch live search matches from backend for the specific query & location
       final searchRes = await widget.api.get('check-contact', {
         'type': 'search',
         'query': q.trim(),
@@ -444,6 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final searchData = searchRes is List ? searchRes as List : [];
 
+      // 2. Reuse preloaded directory list if available to avoid duplicate database download
       List<dynamic> dirData = _cachedDirectoryList;
       if (dirData.isEmpty) {
         final allRes = await widget.api.get('check-contact', {
@@ -519,7 +545,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final Map<String, DirectoryContact> candidateMap = {};
 
+    // 1. Process all directory API contacts matching search and location filter
     for (final e in rawApiList) {
+      // Exclude expired subscription profiles from Home search
       if (e.subscriptionStatus == 'expired') {
         continue;
       }
@@ -573,6 +601,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      // Unique key per distinct API profile (preserving multiple distinct profiles with the same phone)
       final String profileKey = (e.id != null && e.id!.isNotEmpty)
           ? "api_id_${e.id}"
           : "api_custom_${e.name.toLowerCase().trim()}_${_normalizePhone(e.phone)}_${e.service.toLowerCase().trim()}";
@@ -610,6 +639,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // 2. Process local contacts that do NOT have matching profiles in candidateMap
     for (final c in _localContacts) {
       final cleanP = c.phone.replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
       final nameMatch = c.name.toLowerCase().contains(query);
@@ -631,6 +661,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         if (existingItem != null && existingKey != null) {
+          // If candidateMap already has an API item for this contact, explicitly tag category = 'my_contact' so it is guaranteed Tier 1
           candidateMap[existingKey] = DirectoryContact(
             id: existingItem.id,
             name: existingItem.name,
@@ -670,6 +701,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final allCandidates = candidateMap.values.toList();
+
+    // Resolve coordinates for candidate profiles
     final userGeo = await _getUserCurrentGeo();
     final Map<String, GeoPoint> resolvedGeoMap = await LocationService.resolveMultipleCoordinates(allCandidates);
 
@@ -702,10 +735,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     int calcPriorityTier(DirectoryContact c) {
-      if (c.category == 'my_contact' || _isMyContactMatch(c)) return 1;
+      if (c.category == 'my_contact' || _isMyContactMatch(c)) return 1; // My Contact Tier 1
       final bal = double.tryParse(c.priorityBalance) ?? 0.0;
-      if (bal > 0 || c.priority == '0') return 2;
-      return 3;
+      if (bal > 0 || c.priority == '0') return 2; // Sponsored Tier 2
+      return 3; // Normal Profile Tier 3
     }
 
     int calcLocationHierarchyTier(DirectoryContact c) {
@@ -743,13 +776,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
 
     wrappers.sort((a, b) {
+      // 1. Primary Priority Hierarchy: 1 = My Contact, 2 = Sponsored, 3 = Normal Profile
       if (a.priorityTier != b.priorityTier) return a.priorityTier.compareTo(b.priorityTier);
+
+      // 2. Within Tier 1 (My Contact)
       if (a.priorityTier == 1) {
         if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
         if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
         if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
         return a.nameLower.compareTo(b.nameLower);
       }
+
+      // 3. Within Tier 2 (Sponsored)
       if (a.priorityTier == 2) {
         if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
         if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
@@ -757,6 +795,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
         return a.nameLower.compareTo(b.nameLower);
       }
+
+      // 4. Within Tier 3 (Normal Directory Profiles): Ordered strictly from nearest to farthest
       if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
       if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
       if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
@@ -765,13 +805,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     final sortedCandidates = wrappers.map((w) => w.contact).toList();
+
+    final myContactCount = sortedCandidates.where((c) => calcPriorityTier(c) == 1).length;
+    final sponsoredCount = sortedCandidates.where((c) => calcPriorityTier(c) == 2).length;
     final sponsoredList = sortedCandidates.where((c) => calcPriorityTier(c) == 2).toList();
 
     if (mounted) {
       setState(() {
         _results = sortedCandidates;
-        _localMatchCount = sortedCandidates.where((c) => calcPriorityTier(c) == 1).length;
-        _sponsoredCount = sponsoredList.length;
+        _localMatchCount = myContactCount;
+        _sponsoredCount = sponsoredCount;
         _loading = false;
       });
     }
@@ -782,19 +825,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _processSponsoredDeductions(List<DirectoryContact> sponsoredList, String query) async {
-    const double impressionCost = 1.0; 
+    const double impressionCost = 1.0; // ₹1.00 per search display
     final String loggedInPhone = widget.session.phone ?? '';
     final String loggedInEmail = widget.session.email ?? '';
 
     for (final item in sponsoredList) {
+      // Skip deduction if the logged-in user (profile owner) searches their own profile!
       if ((loggedInPhone.isNotEmpty && item.phone == loggedInPhone) ||
           (loggedInEmail.isNotEmpty && item.email == loggedInEmail)) {
+        debugPrint("Skipping impression deduction for profile owner: ${item.phone}");
         continue;
       }
 
       final String dedKey = "${query}_${item.phone}";
       if (_deductedPhonesThisSession.contains(dedKey)) {
-        continue;
+        continue; // Skip duplicate deduction for same query and profile
       }
       _deductedPhonesThisSession.add(dedKey);
 
@@ -815,135 +860,6 @@ class _HomeScreenState extends State<HomeScreen> {
         debugPrint('Error deducting impression cost for ${item.phone}: $e');
       }
     }
-  }
-
-  Future<void> _triggerBackgroundNearbyFetch({bool forceRefresh = false}) async {
-    final currentScope = _scopeLabel;
-    final currentGeo = _currentUserGeo;
-
-    if (!forceRefresh && _NearbyCache.isValid(currentScope, currentGeo)) {
-      if (mounted && _nearbyProfiles.isEmpty) {
-        setState(() {
-          _nearbyProfiles = _NearbyCache.profiles!;
-          _loadingNearby = false;
-        });
-      }
-      return;
-    }
-
-    if (_NearbyCache.isFetching) return;
-    _NearbyCache.isFetching = true;
-
-    if (_nearbyProfiles.isEmpty && _NearbyCache.profiles == null && mounted) {
-      setState(() => _loadingNearby = true);
-    }
-
-    Future.microtask(() async {
-      try {
-        List<Map<String, dynamic>> rawList = _cachedDirectoryList;
-        if (rawList.isEmpty) {
-          final dirData = await widget.api.get('check-contact', {
-            'type': 'all',
-            'location': '',
-          });
-          if (dirData is List) {
-            rawList = dirData
-                .whereType<Map>()
-                .where((item) => item['name'] != null && item['name'].toString().trim().isNotEmpty)
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList();
-            _cachedDirectoryList = rawList;
-          }
-        }
-
-        final contacts = rawList.map((e) => DirectoryContact.fromJson(e)).toList();
-
-        final eligible = contacts.where((c) {
-          if (c.subscriptionStatus == 'expired') return false;
-          if (c.subscriptionEnd != null && c.subscriptionEnd!.isNotEmpty) {
-            final endDate = DateTime.tryParse(c.subscriptionEnd!);
-            if (endDate != null && DateTime.now().isAfter(endDate)) return false;
-          }
-          return true;
-        }).toList();
-
-        final userGeo = await _getUserCurrentGeo();
-        final Map<String, GeoPoint> resolvedGeoMap = await LocationService.resolveMultipleCoordinates(eligible);
-
-        final userArea = widget.session.place1 ?? widget.session.place ?? '';
-        final userAreaLower = (userArea.isEmpty || userArea.toLowerCase() == 'current location') ? '' : userArea.toLowerCase();
-        final userAreaParts = userAreaLower.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty && p != 'current location').toList();
-
-        double calcDistance(DirectoryContact c) {
-          if (userGeo == null) return double.infinity;
-          final key = c.id ?? c.phone;
-          final g = resolvedGeoMap[key] ?? (c.latitude != null && c.longitude != null ? GeoPoint(c.latitude!, c.longitude!) : null);
-          if (g != null) {
-            return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, g.latitude, g.longitude);
-          }
-          return double.infinity;
-        }
-
-        int calcLocTier(DirectoryContact c) {
-          if (userAreaLower.isEmpty) return 5;
-          final fullText = '${c.location ?? ''} ${c.location1 ?? ''} ${c.city ?? ''} ${c.state ?? ''}'.toLowerCase().trim();
-          if (fullText.isEmpty) return 6;
-          for (final p in userAreaParts) {
-            if (fullText.contains(p)) return 1;
-          }
-          if (c.city != null && c.city!.isNotEmpty && userAreaLower.contains(c.city!.toLowerCase())) return 2;
-          if (c.state != null && c.state!.isNotEmpty && userAreaLower.contains(c.state!.toLowerCase())) return 3;
-          return 4;
-        }
-
-        final wrappers = eligible.map((c) {
-          final isMyContact = _isMyContactMatch(c);
-          final bal = double.tryParse(c.priorityBalance) ?? 0.0;
-          final isSponsored = !isMyContact && (bal > 0 || c.priority == '0');
-          return _CandidateWrapper(
-            contact: c,
-            priorityTier: isMyContact ? 1 : (isSponsored ? 2 : 3),
-            searchScore: 0,
-            priorityBalance: bal,
-            distanceMeters: calcDistance(c),
-            locationHierarchyTier: calcLocTier(c),
-            nameLower: c.name.toLowerCase(),
-          );
-        }).toList();
-
-        wrappers.sort((a, b) {
-          if (a.distanceMeters != b.distanceMeters) {
-            return a.distanceMeters.compareTo(b.distanceMeters);
-          }
-          if (a.locationHierarchyTier != b.locationHierarchyTier) {
-            return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
-          }
-          if (a.priorityTier != b.priorityTier) {
-            return a.priorityTier.compareTo(b.priorityTier);
-          }
-          return a.nameLower.compareTo(b.nameLower);
-        });
-
-        final sortedNearby = wrappers.map((w) => w.contact).take(15).toList();
-
-        _NearbyCache.profiles = sortedNearby;
-        _NearbyCache.cachedGeo = userGeo;
-        _NearbyCache.cachedScopeKey = currentScope;
-        _NearbyCache.cachedTime = DateTime.now();
-
-        if (mounted) {
-          setState(() {
-            _nearbyProfiles = sortedNearby;
-            _loadingNearby = false;
-          });
-        }
-      } catch (e) {
-        debugPrint("Error loading nearby profiles: $e");
-        if (mounted) setState(() => _loadingNearby = false);
-      } finally {
-        _NearbyCache.isFetching = false;
-      }
-    });
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -973,7 +889,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _scopeLabel = "Location($cityArea)";
           _selectedLocation = cityArea;
         });
-        _triggerBackgroundNearbyFetch(forceRefresh: true);
         if (_search.text.isNotEmpty) _doSearch(_search.text);
       }
     } catch (e) {
@@ -982,6 +897,8 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _loading = false);
     }
   }
+
+
 
   Future<List<String>> _fetchCityAreas(String city) async {
     final areas = <String>{};
@@ -1051,6 +968,7 @@ class _HomeScreenState extends State<HomeScreen> {
       currentCity = _formattedScopeLabel;
     }
 
+    // Fetch registered areas from API for this city
     final dbAreas = await _fetchCityAreas(currentCity);
     areas.addAll(dbAreas);
 
@@ -1290,7 +1208,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       _scopeLabel = 'Location($area)';
                                                       _selectedLocation = area;
                                                     });
-                                                    _triggerBackgroundNearbyFetch(forceRefresh: true);
                                                     if (_search.text.isNotEmpty) _doSearch(_search.text);
                                                   },
                                                 ),
@@ -1310,7 +1227,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   _scopeLabel = 'Location($locText)';
                                                   _selectedLocation = validArea;
                                                 });
-                                                _triggerBackgroundNearbyFetch(forceRefresh: true);
                                                 if (_search.text.isNotEmpty) _doSearch(_search.text);
                                               },
                                             ),
@@ -1358,7 +1274,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 _scopeLabel = 'Location($area)';
                                                 _selectedLocation = area;
                                               });
-                                              _triggerBackgroundNearbyFetch(forceRefresh: true);
                                               if (_search.text.isNotEmpty) _doSearch(_search.text);
                                             },
                                           );
@@ -1432,6 +1347,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Stack(
           children: [
+            // Top Right Header Menu
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
               top: 15,
@@ -1446,6 +1362,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+            // Center Logo & Title when NOT searching
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
               top: _isSearching ? 0 : (screenHeight * 0.21),
@@ -1471,6 +1388,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+            // Search Results List (positioned below top search bar & scope pill)
             Positioned.fill(
               top: 100,
               child: AnimatedOpacity(
@@ -1483,6 +1401,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+            // Persistent Single Search Bar & Scope Pill (Animates position smoothly)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
@@ -1505,77 +1424,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchResultsList() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)));
-    }
-
-    if (_search.text.trim().isEmpty) {
-      final nearbyList = _nearbyProfiles.isNotEmpty ? _nearbyProfiles : (_NearbyCache.profiles ?? []);
-      if (_loadingNearby && nearbyList.isEmpty) {
-        return const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)));
-      }
-      if (nearbyList.isEmpty) {
-        return const SizedBox.shrink();
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 6),
-            child: Row(
-              children: const [
-                Icon(Icons.near_me, size: 18, color: Color(0xFF1A73E8)),
-                SizedBox(width: 6),
-                Text(
-                  'Nearby Business Profiles',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF202124),
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.only(top: 2, bottom: 20),
-              itemCount: nearbyList.length,
-              itemBuilder: (c, i) {
-                final contact = nearbyList[i];
-                final isFav = _favs.any((e) => e.phone == contact.phone);
-                final isMyContact = _isMyContactMatch(contact);
-                final isSponsored = !isMyContact &&
-                    ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
-
-                return ContactCard(
-                  contact: contact,
-                  isFavourite: isFav,
-                  showFavouriteIcon: false,
-                  isMyContact: isMyContact,
-                  isSponsored: isSponsored,
-                  isFirstThree: i < 3,
-                  onCall: isMyContact ? null : () => widget.store.addToHistory(contact),
-                  onFavouriteToggle: () async {
-                    await widget.store.toggleFavourite(contact);
-                    _loadFavs();
-                  },
-                  onTap: () {
-                    widget.onSearchModeChanged(false);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
-                      _loadFavs();
-                      if (_isSearching) widget.onSearchModeChanged(true);
-                    });
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      );
-    }
-    return _hasSearched && _results.isEmpty
+    return _loading
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)))
+        : _hasSearched && _results.isEmpty && _search.text.isNotEmpty
             ? Padding(
                 padding: const EdgeInsets.only(top: 60),
                 child: Column(
