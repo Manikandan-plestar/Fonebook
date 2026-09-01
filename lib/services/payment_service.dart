@@ -8,8 +8,9 @@ class PaymentService {
   factory PaymentService() => _instance;
   PaymentService._internal();
 
-  late final InAppPurchase _iap;
-  late StreamSubscription<List<PurchaseDetails>> _subscription;
+  final InAppPurchase _iap = InAppPurchase.instance;
+  StreamSubscription<List<PurchaseDetails>>? _subscription;
+  bool _initialized = false;
   // ignore: unused_field
   final ApiClient _api = ApiClient();
 
@@ -20,13 +21,13 @@ class PaymentService {
   Stream<PurchaseDetails> get purchaseStream => _purchaseController.stream;
 
   void initialize() {
-    if (kIsWeb) return;
-    _iap = InAppPurchase.instance;
+    if (kIsWeb || _initialized) return;
+    _initialized = true;
     final Stream<List<PurchaseDetails>> purchaseUpdated = _iap.purchaseStream;
     _subscription = purchaseUpdated.listen((purchaseDetailsList) {
       _listenToPurchaseUpdated(purchaseDetailsList);
     }, onDone: () {
-      _subscription.cancel();
+      _subscription?.cancel();
     }, onError: (error) {
       debugPrint("IAP Subscription Error: $error");
     });
@@ -34,7 +35,7 @@ class PaymentService {
 
   void dispose() {
     if (!kIsWeb) {
-      _subscription.cancel();
+      _subscription?.cancel();
     }
     _purchaseController.close();
   }

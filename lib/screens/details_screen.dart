@@ -50,16 +50,21 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
       };
       final data = await ApiClient().get('check_search_type', queryParams);
       if (data != null && data is List && data.isNotEmpty) {
-        setState(() {
-          _fullContact = DirectoryContact.fromJson(data[0]);
-          _favCount = int.tryParse(_fullContact!.favouriteCount) ?? 0;
-          _isLoading = false;
-        });
-      } else {
-        setState(() => _isLoading = false);
+        final first = data[0];
+        if (first is Map<String, dynamic> && !first.containsKey('error')) {
+          if (mounted) {
+            setState(() {
+              _fullContact = DirectoryContact.fromJson(first);
+              _favCount = int.tryParse(_fullContact!.favouriteCount) ?? 0;
+              _isLoading = false;
+            });
+          }
+          return;
+        }
       }
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -73,12 +78,19 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
 
   void _showAddReviewSheet() {
     final c = _fullContact ?? widget.contact;
+    final profileId = c.id;
+    if (profileId == null || profileId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot submit review: Business Profile ID is missing.')),
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AddReviewBottomSheet(
-        contactId: c.id,
+        contactId: profileId,
         contactPhone: c.phone,
         reviewerName: _session?.email?.split('@')[0] ?? 'Guest',
         reviewerPhone: _session?.phone ?? '',
@@ -575,6 +587,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
   }
 
   Widget _buildReviewsTab(DirectoryContact c) {
+    final reviews = c.reviews;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -601,18 +614,20 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: (c.reviews == null || c.reviews!.isEmpty)
+            child: (reviews == null || reviews.isEmpty)
                 ? const Center(
                     child: Text(
-                      'No reviews yet. Be the first to review!',
+                      'No reviews yet',
                       style: TextStyle(fontFamily: 'Poppins', color: Colors.grey),
                     ),
                   )
                 : ListView.separated(
-                    itemCount: c.reviews!.length,
+                    itemCount: reviews.length,
                     separatorBuilder: (context, index) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final rev = c.reviews![index];
+                      final rawRev = reviews[index];
+                      if (rawRev is! Map) return const SizedBox.shrink();
+                      final rev = Map<String, dynamic>.from(rawRev);
                       final reviewerName = rev['reviewer_name']?.toString() ?? 'User';
                       final comment = rev['comment']?.toString() ?? '';
                       final rating = int.tryParse(rev['rating']?.toString() ?? '0') ?? 0;
@@ -677,14 +692,14 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
 }
 
 class _AddReviewBottomSheet extends StatefulWidget {
-  final String? contactId;
+  final String contactId;
   final String contactPhone;
   final String reviewerName;
   final String reviewerPhone;
   final VoidCallback onSuccess;
 
   const _AddReviewBottomSheet({
-    this.contactId,
+    required this.contactId,
     required this.contactPhone,
     required this.reviewerName,
     required this.reviewerPhone,
@@ -710,7 +725,7 @@ class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
     setState(() => _isSubmitting = true);
     try {
       final res = await ApiClient().post('save_review', {
-        if (widget.contactId != null) 'contact_id': widget.contactId,
+        'contact_id': widget.contactId,
         'contact_phone': widget.contactPhone,
         'reviewer_name': widget.reviewerName,
         'reviewer_phone': widget.reviewerPhone,
@@ -719,7 +734,19 @@ class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
       });
 
       if (mounted) {
-        if (res.toString().toLowerCase().contains('success') || res is Map || res is List) {
+        bool isSuccess = false;
+        if (res is Map) {
+          if (res['status'] == 'success' || (res['message'] != null && res['message'].toString().toLowerCase().contains('success'))) {
+            isSuccess = true;
+          } else if (res['error'] != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['error'].toString())));
+            return;
+          }
+        } else if (res.toString().toLowerCase().contains('success')) {
+          isSuccess = true;
+        }
+
+        if (isSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Review submitted successfully!'), backgroundColor: Colors.green),
           );

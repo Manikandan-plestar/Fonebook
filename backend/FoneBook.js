@@ -193,6 +193,61 @@ db.connect((err) => {
         return;
     }
     console.log('Connected to MySQL');
+    
+    const migrateLegacyReviews = () => {
+        const legacyMigrationSql = `
+            UPDATE reviews r
+            JOIN (
+                SELECT phone_no, MIN(id) as single_id
+                FROM contacts
+                GROUP BY phone_no
+                HAVING COUNT(*) = 1
+            ) c ON r.contact_phone = c.phone_no
+            SET r.contact_id = c.single_id
+            WHERE r.contact_id IS NULL;
+        `;
+        db.query(legacyMigrationSql, (migErr, migResult) => {
+            if (migErr) console.error("Error migrating legacy reviews:", migErr);
+            else if (migResult && migResult.changedRows > 0) {
+                console.log(`Migrated ${migResult.changedRows} legacy reviews to single-profile Business Profile IDs`);
+            }
+        });
+    };
+
+    // Auto-migration checks for reviews and contacts tables
+    db.query("SHOW COLUMNS FROM reviews LIKE 'contact_id'", (colErr, colResult) => {
+        if (!colErr && colResult && colResult.length === 0) {
+            db.query("ALTER TABLE reviews ADD COLUMN contact_id INT DEFAULT NULL AFTER id", (alterErr) => {
+                if (alterErr) console.error("Error adding contact_id column to reviews table:", alterErr);
+                else {
+                    console.log("Added contact_id column to reviews table");
+                    migrateLegacyReviews();
+                }
+            });
+        } else {
+            migrateLegacyReviews();
+        }
+    });
+
+    const subColumns = [
+        { name: 'subscription_status', type: "VARCHAR(20) DEFAULT 'active'" },
+        { name: 'subscription_start', type: "DATETIME DEFAULT NULL" },
+        { name: 'subscription_end', type: "DATETIME DEFAULT NULL" },
+        { name: 'payment_status', type: "VARCHAR(20) DEFAULT 'completed'" },
+        { name: 'transaction_id', type: "TEXT DEFAULT NULL" },
+        { name: 'amount', type: "DOUBLE DEFAULT 499.00" }
+    ];
+
+    subColumns.forEach(col => {
+        db.query(`SHOW COLUMNS FROM contacts LIKE '${col.name}'`, (cErr, cRows) => {
+            if (!cErr && cRows && cRows.length === 0) {
+                db.query(`ALTER TABLE contacts ADD COLUMN ${col.name} ${col.type}`, (aErr) => {
+                    if (aErr) console.error(`Error adding column ${col.name} to contacts table:`, aErr);
+                    else console.log(`Added column ${col.name} to contacts table`);
+                });
+            }
+        });
+    });
 });
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
@@ -245,8 +300,11 @@ app.post('/savecontacts', (req, res) => {
                 });
             } else {
                 // ID provided but not found, insert as new profile
-                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
+                const payStatus = req.body.payment_status || 'completed';
+                const txId = req.body.transaction_id || req.body.payment_id || null;
+                const payAmount = parseFloat(req.body.amount) || 499.00;
+                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services, subscription_status, subscription_start, subscription_end, payment_status, transaction_id, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), DATE_ADD(NOW(), INTERVAL 1 YEAR), ?, ?, ?)";
+                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services, payStatus, txId, payAmount];
 
                 db.query(insertQuery, insertValues, (insertErr, insertResult) => {
                     if (insertErr) {
@@ -292,8 +350,11 @@ app.post('/savecontacts', (req, res) => {
                     }
                 });
             } else {
-                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
+                const payStatus = req.body.payment_status || 'completed';
+                const txId = req.body.transaction_id || req.body.payment_id || null;
+                const payAmount = parseFloat(req.body.amount) || 499.00;
+                const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services, subscription_status, subscription_start, subscription_end, payment_status, transaction_id, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), DATE_ADD(NOW(), INTERVAL 1 YEAR), ?, ?, ?)";
+                const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services, payStatus, txId, payAmount];
 
                 db.query(insertQuery, insertValues, (insertErr, insertResult) => {
                     if (insertErr) {
@@ -427,8 +488,11 @@ app.post('/savecontacts1', (req, res) => {
         });
     } else if (name != null && name.trim() !== '') {
         // ALWAYS INSERT a new profile when creating a profile (allows multiple profiles with same phone number)
-        const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services];
+        const payStatus = req.body.payment_status || 'completed';
+        const txId = req.body.transaction_id || req.body.payment_id || null;
+        const payAmount = parseFloat(req.body.amount) || 499.00;
+        const insertQuery = "INSERT INTO contacts (name, phone_no, email, service, location, location1, state, city, image, keywords, about, landlineno, wpno, skypeno, category, phonenos, publish, owner_email, services, subscription_status, subscription_start, subscription_end, payment_status, transaction_id, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), DATE_ADD(NOW(), INTERVAL 1 YEAR), ?, ?, ?)";
+        const insertValues = [name, phone, email, service, location, location1, state, city, uniqueFilename, keyword, about, landlineno, wpno, skypeno, category, output, publish || 'yes', owner_email, services, payStatus, txId, payAmount];
 
         db.query(insertQuery, insertValues, (insertErr, insertResult) => {
             if (insertErr) {
@@ -1112,11 +1176,11 @@ app.get('/check_search_type', (req, res) => {
 
         let contactData = contactResult[0];
         const contactId = contactData.id;
-        const contactPhone = (contactData.phone_no || phone).replace(/\s+/g, '');
-        // Query 2: Get Reviews for this contact using Business Profile ID (contact_id)
+        // Query 2: Get Reviews strictly by Business Profile ID (contact_id)
         var reviewsSql = `SELECT * FROM reviews WHERE contact_id = ? ORDER BY created DESC;`;
+        var reviewsParams = [contactId];
 
-        db.query(reviewsSql, [contactId], (revErr, reviewsResult) => {
+        db.query(reviewsSql, reviewsParams, (revErr, reviewsResult) => {
             if (revErr) return res.status(200).json([{ error: 'Error reviews' }]);
 
             // MERGE: Add the reviews list into the contact object
@@ -1164,9 +1228,9 @@ app.post('/save_review', (req, res) => {
     const rating = req.body.rating;
     const comment = req.body.comment;
 
-    // Simple validation
-    if ((!contact_id && !contact_phone) || !reviewer_name || !rating) {
-        return res.status(200).json({ error: 'Missing required fields' });
+    // Simple validation - contact_id is required
+    if (!contact_id || !reviewer_name || !rating) {
+        return res.status(200).json({ error: 'Business Profile ID is required' });
     }
 
     const saveReviewSql = `
@@ -1175,7 +1239,7 @@ app.post('/save_review', (req, res) => {
     `;
 
     const values = [
-        contact_id || null,
+        contact_id,
         contact_phone ? contact_phone.replace(/\s+/g, '') : '',
         reviewer_name,
         reviewer_phone ? reviewer_phone.replace(/\s+/g, '') : '',
@@ -1186,8 +1250,7 @@ app.post('/save_review', (req, res) => {
     db.query(saveReviewSql, values, (err, result) => {
         if (err) {
             console.error('Error saving review:', err);
-            res.status(200).json({ error: 'Database error while saving review' });
-            return;
+            return res.status(200).json({ error: 'Database error while saving review' });
         }
 
         // Return "success" so the Flutter app knows to refresh the screen

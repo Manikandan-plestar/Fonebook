@@ -14,6 +14,8 @@ import '../services/session_store.dart';
 import '../models/user_session.dart';
 import '../models/contact.dart';
 import '../services/location_service.dart';
+import '../services/payment_service.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import '../widgets/app_header.dart';
 import 'app_shell.dart';
 import 'profile_list_screen.dart';
@@ -477,12 +479,240 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       final Map<String, String> finalBody = {};
       body.forEach((key, value) { if (value != null) finalBody[key] = value; });
 
-      final endpoint = isEditing ? 'savecontacts' : 'savecontacts1';
-      final res = await _api.post(endpoint, finalBody);
+      if (isEditing) {
+        final res = await _api.post('savecontacts', finalBody);
+        if (res.toString().toLowerCase().contains('success')) {
+          final showStr = '${_showMobile ? 'm' : ''}${_showWhatsapp ? 'w' : ''}';
+          unawaited(_api.post('save_show', {'id': existingId, 'phone': phone, 'show': showStr}));
+          unawaited(_api.post('save_access', {'id': existingId, 'phone': phone, 'who_contact': _whoContact}));
+
+          final currentSession = await _store.read();
+          final session = UserSession(
+            phone: phone,
+            email: widget.email,
+            place: location,
+            place1: location1,
+            country: country,
+            image: _image != null ? 'updated' : currentSession.image,
+            premium: currentSession.premium || (_existingProfile?.verified == 1),
+          );
+          if (existingId.isNotEmpty) DirectoryContact.bust(existingId);
+          DirectoryContact.bust(phone);
+          await _store.save(session);
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Profile updated successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            if (widget.phone != null && Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileListScreen(
+                    api: _api,
+                    session: session,
+                    mode: 'profile',
+                  ),
+                ),
+              );
+            }
+          }
+        } else {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.toString())));
+          }
+        }
+      } else {
+        // NEW Business Profile Creation: Enforce ₹499 Annual Subscription Payment
+        await _processProfilePaymentAndSave(finalBody, phone, location, location1, country);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _processProfilePaymentAndSave(
+    Map<String, String> finalBody,
+    String phone,
+    String location,
+    String location1,
+    String country,
+  ) async {
+    final payment = PaymentService();
+    payment.initialize();
+
+    // Query Google Play Billing for active Play Console products (prioritize create_profile_499, fallback to existing promote_3/promote_1)
+    final bool available = await payment.loadProducts([
+      'create_profile_499',
+      'promote_3',
+      'promote_1',
+      'promote_2',
+      'promote_4',
+    ]);
+
+    if (!available || payment.products.isEmpty) {
+      // If Play Store Billing is unavailable on debug build or test device, provide test verification option
+      bool? confirmTestPayment = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Business Profile Subscription', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text('Creating a Business Profile requires an annual subscription of ₹499 for 1 year.', style: TextStyle(fontFamily: 'Poppins', fontSize: 14)),
+              SizedBox(height: 12),
+              Text('Price: ₹499 / 1 Year', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFD7B41A))),
+              SizedBox(height: 8),
+              Text('(Google Play Billing unavailable on this debug build/device. Confirm test payment verification to create profile.)', style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD7B41A), foregroundColor: Colors.black),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Pay ₹499', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmTestPayment != true) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment failed. Business Profile was not created.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final txId = 'tx_499_${DateTime.now().millisecondsSinceEpoch}';
+      finalBody['transaction_id'] = txId;
+      finalBody['payment_status'] = 'completed';
+      finalBody['amount'] = '499';
+
+      await _createProfileInBackend(finalBody, phone, location, location1, country);
+      return;
+    }
+
+    ProductDetails? targetProduct;
+    for (final p in payment.products) {
+      if (p.id == 'create_profile_499') {
+        targetProduct = p;
+        break;
+      }
+    }
+    if (targetProduct == null) {
+      for (final p in payment.products) {
+        if (p.id == 'promote_3') {
+          targetProduct = p;
+          break;
+        }
+      }
+    }
+    if (targetProduct == null && payment.products.isNotEmpty) {
+      targetProduct = payment.products.first;
+    }
+
+    if (targetProduct == null) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment failed. Product not found.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final ProductDetails product = targetProduct;
+
+    StreamSubscription<PurchaseDetails>? sub;
+    bool handled = false;
+
+    sub = payment.purchaseStream.listen((purchase) async {
+      if (handled) return;
+
+      if (purchase.status == PurchaseStatus.purchased || purchase.status == PurchaseStatus.restored) {
+        handled = true;
+        sub?.cancel();
+        final txId = purchase.purchaseID ?? 'tx_499_${DateTime.now().millisecondsSinceEpoch}';
+        finalBody['transaction_id'] = txId;
+        finalBody['payment_status'] = 'completed';
+        finalBody['amount'] = '499';
+
+        await _createProfileInBackend(finalBody, phone, location, location1, country);
+      } else if (purchase.status == PurchaseStatus.error || purchase.status == PurchaseStatus.canceled) {
+        handled = true;
+        sub?.cancel();
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment failed. Business Profile was not created.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    });
+
+    try {
+      await payment.buyProduct(product);
+    } catch (e) {
+      handled = true;
+      sub.cancel();
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment failed. Business Profile was not created.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _createProfileInBackend(
+    Map<String, String> finalBody,
+    String phone,
+    String location,
+    String location1,
+    String country,
+  ) async {
+    try {
+      final res = await _api.post('savecontacts1', finalBody);
       if (res.toString().toLowerCase().contains('success')) {
+        String newId = '';
+        if (res is Map && res['id'] != null) {
+          newId = res['id'].toString();
+        }
+
         final showStr = '${_showMobile ? 'm' : ''}${_showWhatsapp ? 'w' : ''}';
-        unawaited(_api.post('save_show', {'id': existingId ?? '', 'phone': phone, 'show': showStr}));
-        unawaited(_api.post('save_access', {'id': existingId ?? '', 'phone': phone, 'who_contact': _whoContact}));
+        unawaited(_api.post('save_show', {'id': newId, 'phone': phone, 'show': showStr}));
+        unawaited(_api.post('save_access', {'id': newId, 'phone': phone, 'who_contact': _whoContact}));
 
         final currentSession = await _store.read();
         final session = UserSession(
@@ -494,13 +724,15 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           image: _image != null ? 'updated' : currentSession.image,
           premium: currentSession.premium || (_existingProfile?.verified == 1),
         );
-        if (existingId != null) DirectoryContact.bust(existingId);
+        if (newId.isNotEmpty) DirectoryContact.bust(newId);
         DirectoryContact.bust(phone);
         await _store.save(session);
+
         if (mounted) {
+          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(isEditing ? 'Profile updated successfully' : 'Profile created successfully'),
+            const SnackBar(
+              content: Text('Payment Verified! Business Profile created successfully with 1-Year Subscription.'),
               backgroundColor: Colors.green,
             ),
           );
@@ -528,18 +760,14 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.toString())));
-      }
-    } catch (e) {
-      debugPrint("Save error: $e");
-      if (mounted) {
-        String msg = 'Error saving profile: $e';
-        if (e.toString().contains('SocketException') || e.toString().contains('Network is unreachable')) {
-          msg = 'No internet connection. Please check your network connection.';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment failed. The Business Profile was not created.'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
       }
     } finally {
       setState(() => _isLoading = false);

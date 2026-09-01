@@ -55,11 +55,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isMyContactMatch(DirectoryContact c) {
     if (c.category == 'my_contact') return true;
-    final cPhone = _normalizePhone(c.phone);
-    if (cPhone.isNotEmpty) {
+    final phonesToCheck = <String>{};
+    final p1 = _normalizePhone(c.phone);
+    if (p1.isNotEmpty) phonesToCheck.add(p1);
+    final p2 = _normalizePhone(c.whatsapp);
+    if (p2.isNotEmpty) phonesToCheck.add(p2);
+    final p3 = _normalizePhone(c.landline);
+    if (p3.isNotEmpty) phonesToCheck.add(p3);
+    if (c.additionalPhones != null && c.additionalPhones!.isNotEmpty) {
+      for (final ap in c.additionalPhones!.split(',')) {
+        final np = _normalizePhone(ap);
+        if (np.isNotEmpty) phonesToCheck.add(np);
+      }
+    }
+
+    if (phonesToCheck.isNotEmpty) {
       for (final l in _localContacts) {
         final lPhone = _normalizePhone(l.phone);
-        if (lPhone.isNotEmpty && lPhone == cPhone) return true;
+        if (lPhone.isNotEmpty && phonesToCheck.contains(lPhone)) return true;
       }
     }
     return false;
@@ -534,6 +547,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // 1. Process all directory API contacts matching search and location filter
     for (final e in rawApiList) {
+      // Exclude expired subscription profiles from Home search
+      if (e.subscriptionStatus == 'expired') {
+        continue;
+      }
+      if (e.subscriptionEnd != null && e.subscriptionEnd!.isNotEmpty) {
+        final endDate = DateTime.tryParse(e.subscriptionEnd!);
+        if (endDate != null && DateTime.now().isAfter(endDate)) {
+          continue;
+        }
+      }
+
       if (apiLocation.isNotEmpty && !_matchesSelectedLocation(e, apiLocation)) {
         continue;
       }
@@ -625,12 +649,42 @@ class _HomeScreenState extends State<HomeScreen> {
       if (nameMatch || titleMatch || phoneMatch) {
         final cCleanPhone = _normalizePhone(c.phone);
 
-        final alreadyHasProfile = candidateMap.values.any((item) {
-          final itemPhone = _normalizePhone(item.phone);
-          return cCleanPhone.isNotEmpty && itemPhone.isNotEmpty && cCleanPhone == itemPhone;
-        });
+        DirectoryContact? existingItem;
+        String? existingKey;
+        for (final entry in candidateMap.entries) {
+          final itemPhone = _normalizePhone(entry.value.phone);
+          if (cCleanPhone.isNotEmpty && itemPhone.isNotEmpty && cCleanPhone == itemPhone) {
+            existingItem = entry.value;
+            existingKey = entry.key;
+            break;
+          }
+        }
 
-        if (!alreadyHasProfile) {
+        if (existingItem != null && existingKey != null) {
+          // If candidateMap already has an API item for this contact, explicitly tag category = 'my_contact' so it is guaranteed Tier 1
+          candidateMap[existingKey] = DirectoryContact(
+            id: existingItem.id,
+            name: existingItem.name,
+            service: existingItem.service,
+            phone: existingItem.phone,
+            location: existingItem.location,
+            location1: existingItem.location1,
+            city: existingItem.city,
+            state: existingItem.state,
+            image: existingItem.image,
+            keyword: existingItem.keyword,
+            tags: existingItem.tags,
+            verified: existingItem.verified,
+            priority: existingItem.priority,
+            priorityBalance: existingItem.priorityBalance,
+            category: 'my_contact',
+            showContact: existingItem.showContact,
+            additionalPhones: existingItem.additionalPhones,
+            additionalServices: existingItem.additionalServices,
+            latitude: existingItem.latitude,
+            longitude: existingItem.longitude,
+          );
+        } else {
           final localKey = "local_${c.id ?? cCleanPhone}_${c.name.toLowerCase().trim()}";
           candidateMap[localKey] = DirectoryContact(
             id: c.id?.toString(),
@@ -648,8 +702,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final allCandidates = candidateMap.values.toList();
 
-    // Prepare pre-computed metadata for fast sorting
+    // Resolve coordinates for candidate profiles
     final userGeo = await _getUserCurrentGeo();
+    final Map<String, GeoPoint> resolvedGeoMap = await LocationService.resolveMultipleCoordinates(allCandidates);
+
     final userArea = widget.session.place1 ?? widget.session.place ?? '';
     final userAreaLower = (userArea.isEmpty || userArea.toLowerCase() == 'current location') ? '' : userArea.toLowerCase();
     final userAreaParts = userAreaLower.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty && p != 'current location').toList();
@@ -679,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     int calcPriorityTier(DirectoryContact c) {
-      if (_isMyContactMatch(c)) return 1; // My Contact Tier 1
+      if (c.category == 'my_contact' || _isMyContactMatch(c)) return 1; // My Contact Tier 1
       final bal = double.tryParse(c.priorityBalance) ?? 0.0;
       if (bal > 0 || c.priority == '0') return 2; // Sponsored Tier 2
       return 3; // Normal Profile Tier 3
@@ -698,8 +754,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     double calcDistanceMeters(DirectoryContact c) {
-      if (userGeo != null && c.latitude != null && c.longitude != null) {
-        return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, c.latitude!, c.longitude!);
+      if (userGeo == null) return double.infinity;
+      final key = c.id ?? c.phone;
+      final g = resolvedGeoMap[key] ?? (c.latitude != null && c.longitude != null ? GeoPoint(c.latitude!, c.longitude!) : null);
+      if (g != null) {
+        return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, g.latitude, g.longitude);
       }
       return double.infinity;
     }
@@ -717,25 +776,30 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
 
     wrappers.sort((a, b) {
+      // 1. Primary Priority Hierarchy: 1 = My Contact, 2 = Sponsored, 3 = Normal Profile
       if (a.priorityTier != b.priorityTier) return a.priorityTier.compareTo(b.priorityTier);
 
+      // 2. Within Tier 1 (My Contact)
       if (a.priorityTier == 1) {
-        if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
         if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
+        if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
+        if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
         return a.nameLower.compareTo(b.nameLower);
       }
 
+      // 3. Within Tier 2 (Sponsored)
       if (a.priorityTier == 2) {
-        if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
-        if (a.priorityBalance != b.priorityBalance) return b.priorityBalance.compareTo(a.priorityBalance);
         if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
+        if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
+        if (a.priorityBalance != b.priorityBalance) return b.priorityBalance.compareTo(a.priorityBalance);
+        if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
         return a.nameLower.compareTo(b.nameLower);
       }
 
-      // Tier 3 (Normal Directory Profiles)
-      if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
+      // 4. Within Tier 3 (Normal Directory Profiles): Ordered strictly from nearest to farthest
       if (a.distanceMeters != b.distanceMeters) return a.distanceMeters.compareTo(b.distanceMeters);
       if (a.locationHierarchyTier != b.locationHierarchyTier) return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
+      if (a.searchScore != b.searchScore) return a.searchScore.compareTo(b.searchScore);
       if (a.contact.verified != b.contact.verified) return b.contact.verified.compareTo(a.contact.verified);
       return a.nameLower.compareTo(b.nameLower);
     });
