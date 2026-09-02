@@ -914,8 +914,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD7B41A),
-                    foregroundColor: Colors.black,
+                    backgroundColor: const Color(0xFF4C5B8F),
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: saving
@@ -960,7 +960,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           }
                         },
                   child: saving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Text('Add', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
@@ -1200,8 +1200,8 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD7B41A),
-                    foregroundColor: Colors.black,
+                    backgroundColor: const Color(0xFF4C5B8F),
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: saving
@@ -1247,7 +1247,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                           }
                         },
                   child: saving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Text('Update', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],

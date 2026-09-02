@@ -337,18 +337,18 @@ class _PromoteScreenState extends State<PromoteScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSwitchRow('Enable Promotion', _isPromoting, _updatePriority, isMain: true),
-                          const Divider(height: 24),
-                          const Text('Search Keyword Match Type', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins')),
-                          const SizedBox(height: 6),
-                          _buildSwitchRow('Broad (Default)', _searchType == 'broad', (v) {
-                            if (v) _updateSearchType('broad');
-                          }),
-                          _buildSwitchRow('Phrase', _searchType == 'phrase', (v) {
-                            if (v) _updateSearchType('phrase');
-                          }),
-                          _buildSwitchRow('Exact', _searchType == 'exact', (v) {
-                            if (v) _updateSearchType('exact');
-                          }),
+                          // const Divider(height: 24),
+                          // const Text('Search Keyword Match Type', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins')),
+                          // const SizedBox(height: 6),
+                          // _buildSwitchRow('Broad (Default)', _searchType == 'broad', (v) {
+                          //   if (v) _updateSearchType('broad');
+                          // }),
+                          // _buildSwitchRow('Phrase', _searchType == 'phrase', (v) {
+                          //   if (v) _updateSearchType('phrase');
+                          // }),
+                          // _buildSwitchRow('Exact', _searchType == 'exact', (v) {
+                          //   if (v) _updateSearchType('exact');
+                          // }),
                         ],
                       ),
                     ),

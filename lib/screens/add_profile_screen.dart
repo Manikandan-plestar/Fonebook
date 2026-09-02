@@ -903,7 +903,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
 
   String _getLabel(String type) {
     switch (type) {
-      case 'name': return 'Full name';
+      case 'name': return 'Full Name';
       case 'title': return 'Profession';
       case 'about': return 'About';
       case 'skype': return 'Skype ID / Website URL';
@@ -922,7 +922,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: isEdit ? 'Edit Profile' : 'Business Profile',
+              title: isEdit ? 'Edit Business' : 'Business Profile',
               onBack: () => Navigator.pop(context),
               showMenu: true,
               api: _api,
@@ -977,14 +977,14 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                     
                     const SizedBox(height: 30),
                     
-                    _buildTextField(_phoneController, 'Phone number', keyboardType: TextInputType.phone, isReadOnly: true),
+                    _buildTextField(_phoneController, 'Phone Number', keyboardType: TextInputType.phone, isReadOnly: true),
                     _buildTextField(_wpController, 'WhatsApp Number', keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly]),
                     _buildTextField(_nameController, _getLabel('name')),
                     _buildTextField(_titleController, _getLabel('title')),
                     _buildTextField(_aboutController, _getLabel('about'), maxLines: 5, inputFormatters: [LengthLimitingTextInputFormatter(600)]),
                     _buildTextField(
                       _locationController, 
-                      'Business location (GPS Only)', 
+                      'Business Location (GPS Only)', 
                       isReadOnly: true, 
                       maxLines: 3,
                       onTap: _onLocationFieldTap,
@@ -1069,106 +1069,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                       ),
                     ),
 
-                    if (isEdit) ...[
-                      const SizedBox(height: 10),
-                      const Divider(color: Color(0xFFD7D7D7)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                        child: Align(alignment: Alignment.centerLeft, child: Text(_getLabel('services'), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black, fontSize: 15, fontFamily: 'Poppins'))),
-                      ),
-                      ..._serviceControllers.asMap().entries.map((entry) {
-                        int idx = entry.key;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
-                          child: Row(
-                            children: [
-                              Expanded(child: _buildTextField(_serviceControllers[idx], _getLabel('service_item'))),
-                              IconButton(icon: const Icon(Icons.delete, color: Colors.grey), onPressed: () => setState(() => _serviceControllers.removeAt(idx))),
-                            ],
-                          ),
-                        );
-                      }),
-                      TextButton(onPressed: () => setState(() => _serviceControllers.add(TextEditingController())), child: const Text('+Add More', style: TextStyle(color: Color(0xFF6C757D), fontWeight: FontWeight.bold, fontFamily: 'Poppins'))),
-                    ],
 
-                    const SizedBox(height: 10),
-
-                    // Access / Target Section Card
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE9ECEF)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Target',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
-                            ),
-                            const SizedBox(height: 14),
-                            Row(
-                              children: [
-                                const Expanded(
-                                  child: Text(
-                                    'Who can contact you',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF495057), fontFamily: 'Poppins'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                SizedBox(
-                                  width: 160,
-                                  child: DropdownButtonFormField<String>(
-                                    value: _whoContact,
-                                    isExpanded: true,
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      filled: true,
-                                      fillColor: const Color(0xFFFFF3CD),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: const BorderSide(color: Color(0xFFFFECB3)),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: const BorderSide(color: Color(0xFFFFECB3)),
-                                      ),
-                                    ),
-                                    items: const [
-                                      DropdownMenuItem(
-                                        value: 'international',
-                                        child: Text('International', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF856404), fontFamily: 'Poppins')),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'country',
-                                        child: Text('Country', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF856404), fontFamily: 'Poppins')),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'location',
-                                        child: Text('Current Location', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF856404), fontFamily: 'Poppins')),
-                                      ),
-                                    ],
-                                    onChanged: (v) => _saveWho(v!),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
 
                     const SizedBox(height: 25),
                     Padding(

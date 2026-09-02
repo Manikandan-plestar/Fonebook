@@ -163,8 +163,8 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
                       child: ElevatedButton(
                         onPressed: _loading ? null : _onNext,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFD7B41A),
-                          foregroundColor: Colors.black,
+                          backgroundColor: const Color(0xFF4C5B8F),
+                          foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),

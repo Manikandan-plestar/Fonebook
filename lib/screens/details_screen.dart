@@ -259,7 +259,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                                   padding: const EdgeInsets.all(6),
                                   child: Icon(
                                     _isFav ? Icons.star : Icons.star_border,
-                                    color: _isFav ? const Color(0xFFF6D207) : Colors.grey.shade500,
+                                    color: _isFav ? const Color(0xFF4C5B8F) : Colors.grey.shade500,
                                     size: 28,
                                   ),
                                 ),
@@ -270,7 +270,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                   fontFamily: 'Poppins',
-                                  color: Color(0xFF212529),
+                                  color: Color(0xFF4C5B8F),
                                 ),
                               ),
                             ],
@@ -284,9 +284,9 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                       color: Colors.white,
                       child: TabBar(
                         controller: _tabController,
-                        indicatorColor: const Color(0xFFD7B41A),
+                        indicatorColor: const Color(0xFF4C5B8F),
                         indicatorWeight: 3,
-                        labelColor: const Color(0xFFD7B41A),
+                        labelColor: const Color(0xFF4C5B8F),
                         unselectedLabelColor: Colors.grey,
                         labelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
                         tabs: const [
@@ -604,8 +604,8 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add Review', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD7B41A),
-                  foregroundColor: const Color(0xFF272000),
+                  backgroundColor: const Color(0xFF4C5B8F),
+                  foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -647,7 +647,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                               children: [
                                 const CircleAvatar(
                                   radius: 18,
-                                  backgroundColor: Color(0xFFD7B41A),
+                                  backgroundColor: Color(0xFF4C5B8F),
                                   child: Icon(Icons.person, color: Colors.white, size: 20),
                                 ),
                                 const SizedBox(width: 12),
@@ -665,7 +665,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                                   children: List.generate(5, (starIdx) {
                                     return Icon(
                                       starIdx < rating ? Icons.star : Icons.star_border,
-                                      color: const Color(0xFFF6D207),
+                                      color: const Color(0xFF4C5B8F),
                                       size: 16,
                                     );
                                   }),
@@ -798,7 +798,7 @@ class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
               return IconButton(
                 icon: Icon(
                   index < _rating ? Icons.star : Icons.star_border,
-                  color: const Color(0xFFF6D207),
+                  color: const Color(0xFF4C5B8F),
                   size: 32,
                 ),
                 onPressed: () => setState(() => _rating = index + 1),
@@ -823,12 +823,12 @@ class _AddReviewBottomSheetState extends State<_AddReviewBottomSheet> {
             child: ElevatedButton(
               onPressed: _isSubmitting ? null : _submitReview,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD7B41A),
-                foregroundColor: const Color(0xFF272000),
+                backgroundColor: const Color(0xFF4C5B8F),
+                foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: _isSubmitting
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Text('Submit Review', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
             ),
           ),
