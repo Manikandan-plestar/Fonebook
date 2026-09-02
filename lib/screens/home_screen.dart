@@ -39,6 +39,8 @@ class NearbyCacheData {
   }
 }
 
+enum LocationInitState { uninitialized, initializing, ready, error }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.api, required this.store, required this.session, required this.onSearchModeChanged});
   final ApiClient api;
@@ -69,6 +71,119 @@ class _HomeScreenState extends State<HomeScreen> {
   GeoPoint? _currentUserGeo;
   List<DirectoryContact> _nearbyProfiles = [];
   bool _loadingNearby = false;
+  LocationInitState _locationState = LocationInitState.uninitialized;
+  Completer<void>? _locationInitCompleter;
+
+  Future<void> _initLocation({bool forceRefresh = false}) async {
+    if (!forceRefresh && _locationState == LocationInitState.ready) return;
+    if (!forceRefresh && _locationState == LocationInitState.initializing && _locationInitCompleter != null) {
+      return _locationInitCompleter!.future;
+    }
+
+    _locationInitCompleter = Completer<void>();
+    if (mounted) setState(() => _locationState = LocationInitState.initializing);
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _fallbackLocationFromSession();
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        Position? position;
+        if (!forceRefresh) {
+          position = await Geolocator.getLastKnownPosition();
+        }
+        position ??= await Geolocator.getCurrentPosition(
+          locationSettings: LocationSettings(
+            accuracy: forceRefresh ? LocationAccuracy.high : LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 4),
+          ),
+        );
+
+        if (position != null) {
+          _currentUserGeo = GeoPoint(position.latitude, position.longitude);
+
+          String cityArea = '';
+          if (!kIsWeb) {
+            try {
+              List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
+              if (placemarks.isNotEmpty) {
+                Placemark p = placemarks.first;
+                final subLocality = p.subLocality?.trim();
+                final locality = p.locality?.trim();
+                final subAdmin = p.subAdministrativeArea?.trim();
+                final admin = p.administrativeArea?.trim();
+
+                if (subLocality != null && subLocality.isNotEmpty && locality != null && locality.isNotEmpty && subLocality.toLowerCase() != locality.toLowerCase()) {
+                  cityArea = "$subLocality, $locality";
+                } else if (locality != null && locality.isNotEmpty) {
+                  cityArea = locality;
+                } else if (subLocality != null && subLocality.isNotEmpty) {
+                  cityArea = subLocality;
+                } else if (subAdmin != null && subAdmin.isNotEmpty) {
+                  cityArea = subAdmin;
+                } else if (admin != null && admin.isNotEmpty) {
+                  cityArea = admin;
+                }
+              }
+            } catch (e) {
+              debugPrint("Reverse geocoding error: $e");
+            }
+          }
+
+          if (cityArea.isEmpty || cityArea.toLowerCase() == 'current location') {
+            final place = widget.session.place1 ?? widget.session.place;
+            cityArea = (place != null && place.isNotEmpty && place != "Current Location")
+                ? place
+                : "Tirunelveli";
+          }
+
+          if (mounted && !_userHasCustomScope) {
+            setState(() {
+              _scopeLabel = "Location($cityArea)";
+              _selectedLocation = cityArea;
+              _locationState = LocationInitState.ready;
+            });
+          }
+          return;
+        }
+      }
+
+      _fallbackLocationFromSession();
+    } catch (e) {
+      debugPrint("Location initialization error: $e");
+      _fallbackLocationFromSession();
+    } finally {
+      if (!(_locationInitCompleter?.isCompleted ?? true)) {
+        _locationInitCompleter?.complete();
+      }
+    }
+  }
+
+  void _fallbackLocationFromSession() {
+    final place = widget.session.place1 ?? widget.session.place;
+    String fallbackCity = (place != null && place.isNotEmpty && place != "Current Location")
+        ? place
+        : "Tirunelveli";
+
+    if (mounted && !_userHasCustomScope) {
+      setState(() {
+        _scopeLabel = "Location($fallbackCity)";
+        _selectedLocation = fallbackCity;
+        _locationState = LocationInitState.ready;
+      });
+    }
+    if (!(_locationInitCompleter?.isCompleted ?? true)) {
+      _locationInitCompleter?.complete();
+    }
+  }
 
   String _normalizePhone(String? p) {
     if (p == null) return '';
@@ -102,6 +217,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<GeoPoint?> _getUserCurrentGeo() async {
+    if (_locationState == LocationInitState.initializing && _locationInitCompleter != null) {
+      await _locationInitCompleter!.future.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {},
+      );
+    }
     if (_currentUserGeo != null) return _currentUserGeo;
 
     try {
@@ -215,25 +336,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _loadData() async {
     final favs = await widget.store.getFavourites();
-    final currentSession = await widget.store.read();
-
     if (mounted) setState(() => _favs = favs);
 
     if (!_userHasCustomScope) {
-      String defaultCity = (currentSession.place1 != null && currentSession.place1!.isNotEmpty)
-          ? currentSession.place1!
-          : ((widget.session.place1 != null && widget.session.place1!.isNotEmpty)
-              ? widget.session.place1!
-              : "Current Location");
-
-      if (mounted) {
-        setState(() {
-          _scopeLabel = "Location($defaultCity)";
-          _selectedLocation = defaultCity == "Current Location" ? null : defaultCity;
-        });
-      }
-
-      _autoFetchLocation();
+      await _initLocation();
     }
 
     _loadLocalContacts();
@@ -263,66 +369,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint("Preload directory error: $e");
-    }
-  }
-
-  Future<void> _autoFetchLocation() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        // Try last known position first for instant GPS city resolution
-        Position? position = await Geolocator.getLastKnownPosition();
-        position ??= await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 4),
-          ),
-        );
-
-        if (!kIsWeb && position != null) {
-          _currentUserGeo = GeoPoint(position.latitude, position.longitude);
-          List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
-          if (placemarks.isNotEmpty) {
-            Placemark p = placemarks.first;
-            final subLocality = p.subLocality?.trim();
-            final locality = p.locality?.trim();
-            final subAdmin = p.subAdministrativeArea?.trim();
-            final admin = p.administrativeArea?.trim();
-
-            String cityArea = '';
-            if (subLocality != null && subLocality.isNotEmpty && locality != null && locality.isNotEmpty && subLocality.toLowerCase() != locality.toLowerCase()) {
-              cityArea = "$subLocality,$locality";
-            } else if (locality != null && locality.isNotEmpty) {
-              cityArea = locality;
-            } else if (subLocality != null && subLocality.isNotEmpty) {
-              cityArea = subLocality;
-            } else if (subAdmin != null && subAdmin.isNotEmpty) {
-              cityArea = subAdmin;
-            } else if (admin != null && admin.isNotEmpty) {
-              cityArea = admin;
-            }
-
-            if (cityArea.isNotEmpty && mounted && !_userHasCustomScope) {
-              setState(() {
-                _scopeLabel = "Location($cityArea)";
-                _selectedLocation = cityArea;
-              });
-              if (_search.text.isNotEmpty) {
-                _doSearch(_search.text);
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Auto location detection error: $e");
     }
   }
 
@@ -471,6 +517,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final query = q.trim().toLowerCase();
     if (query.isEmpty) return;
 
+    // Ensure location is fully initialized before executing search request
+    if (_locationState == LocationInitState.initializing && _locationInitCompleter != null) {
+      await _locationInitCompleter!.future.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {},
+      );
+    }
+
     setState(() {
       _loading = true;
       _isSearching = true;
@@ -487,6 +541,9 @@ class _HomeScreenState extends State<HomeScreen> {
     String apiLocation = '';
     if (_scopeLabel.startsWith('Location(') || _scopeLabel.startsWith('Country(')) {
       apiLocation = _selectedLocation ?? '';
+      if (apiLocation.isEmpty || apiLocation.toLowerCase() == 'current location') {
+        apiLocation = widget.session.place1 ?? widget.session.place ?? '';
+      }
     }
 
     try {
@@ -893,6 +950,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _triggerBackgroundNearbyFetch({bool forceRefresh = false}) async {
+    if (_locationState == LocationInitState.initializing && _locationInitCompleter != null) {
+      await _locationInitCompleter!.future.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {},
+      );
+    }
+
     final currentScope = _scopeLabel;
     final currentGeo = _currentUserGeo;
 
@@ -915,7 +979,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     Future.microtask(() async {
       try {
-        final userAreaStr = widget.session.place1 ?? widget.session.place ?? '';
+        final userAreaStr = (_selectedLocation != null && _selectedLocation!.isNotEmpty)
+            ? _selectedLocation!
+            : (widget.session.place1 ?? widget.session.place ?? '');
 
         final dirData = await widget.api.get('check-contact', {
           'type': 'nearby',
@@ -1122,38 +1188,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchCurrentLocation() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-        );
-        _currentUserGeo = GeoPoint(position.latitude, position.longitude);
-        
-        String cityArea = "Current Location";
-        
-        if (!kIsWeb) {
-          List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
-          if (placemarks.isNotEmpty) {
-            Placemark p = placemarks[0];
-            cityArea = p.subLocality != null ? "${p.subLocality}, ${p.locality}" : (p.locality ?? '');
-          }
-        }
-
-        setState(() {
-          _scopeLabel = "Location($cityArea)";
-          _selectedLocation = cityArea;
-        });
-        if (_search.text.isNotEmpty) _doSearch(_search.text);
+      await _initLocation(forceRefresh: true);
+      if (_search.text.isNotEmpty) {
+        await _doSearch(_search.text);
+      } else {
+        await _triggerBackgroundNearbyFetch(forceRefresh: true);
       }
     } catch (e) {
-      debugPrint("Location error: $e");
+      debugPrint("Fetch current location error: $e");
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
