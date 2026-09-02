@@ -1222,21 +1222,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<String>> _fetchCityAreas(String city) async {
     final areas = <String>{};
     try {
+      final searchCity = city.split(',').first.trim();
       final data = await widget.api.get('check-contact', {
-        'type': 'search',
-        'query': '',
-        'location': city,
+        'type': 'all',
+        'location': searchCity,
       });
 
       if (data is List) {
         for (var item in data) {
-          if (item is Map && item['location1'] != null) {
-            final loc = item['location1'].toString().trim();
-            if (loc.isNotEmpty) {
+          if (item is Map) {
+            final loc1 = item['location1']?.toString().trim();
+            final loc = item['location']?.toString().trim();
+            if (loc1 != null && loc1.isNotEmpty) {
+              final areaName = loc1.split(',').first.trim();
+              if (areaName.isNotEmpty) areas.add(areaName);
+            }
+            if (loc != null && loc.isNotEmpty) {
               final areaName = loc.split(',').first.trim();
-              if (areaName.isNotEmpty && areaName.toLowerCase() != city.toLowerCase()) {
-                areas.add(areaName);
-              }
+              if (areaName.isNotEmpty) areas.add(areaName);
             }
           }
         }
@@ -1248,9 +1251,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchGpsAndDatabaseAreas() async {
-    final areas = <String>{};
+    final Map<String, GeoPoint> areaGeoMap = {};
+    final Map<String, double> areaDistanceMap = {};
+    final Set<String> rawAreaNames = {};
     String currentCity = "Current Location";
     String currentArea = "";
+
+    GeoPoint? userGeo = _currentUserGeo;
 
     try {
       LocationPermission permission = await Geolocator.checkPermission();
@@ -1259,45 +1266,193 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        Position? position = await Geolocator.getLastKnownPosition();
+        position ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 3),
+          ),
         );
-        
-        if (!kIsWeb) {
-          List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
-          for (var p in placemarks) {
-            if (p.subLocality != null && p.subLocality!.trim().isNotEmpty) {
-              areas.add(p.subLocality!.trim());
-              currentArea = p.subLocality!.trim();
-            }
-            if (p.thoroughfare != null && p.thoroughfare!.trim().isNotEmpty) {
-              areas.add(p.thoroughfare!.trim());
-            }
-            if (p.locality != null && p.locality!.trim().isNotEmpty) {
-              currentCity = p.locality!.trim();
+
+        if (position != null) {
+          userGeo = GeoPoint(position.latitude, position.longitude);
+          _currentUserGeo = userGeo;
+
+          if (!kIsWeb) {
+            List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
+            for (var p in placemarks) {
+              final subLoc = p.subLocality?.trim();
+              final thoroughfare = p.thoroughfare?.trim();
+              final locality = p.locality?.trim();
+              final subAdmin = p.subAdministrativeArea?.trim();
+
+              if (subLoc != null && subLoc.isNotEmpty) {
+                rawAreaNames.add(subLoc);
+                currentArea = subLoc;
+                areaGeoMap[subLoc] = userGeo;
+                areaDistanceMap[subLoc] = 0.0;
+              }
+              if (thoroughfare != null && thoroughfare.isNotEmpty) {
+                rawAreaNames.add(thoroughfare);
+                areaGeoMap[thoroughfare] = userGeo;
+                areaDistanceMap[thoroughfare] = 0.0;
+              }
+              if (locality != null && locality.isNotEmpty) {
+                currentCity = locality;
+                rawAreaNames.add(locality);
+                areaGeoMap[locality] = userGeo;
+                areaDistanceMap[locality] = 0.0;
+              }
+              if (subAdmin != null && subAdmin.isNotEmpty) {
+                rawAreaNames.add(subAdmin);
+              }
             }
           }
         }
       }
     } catch (e) {
-      debugPrint("GPS Geocoding error: $e");
+      debugPrint("GPS Geocoding error in Choose Area: $e");
     }
 
     if (currentCity == "Current Location" || currentCity.isEmpty) {
-      final defaultPlace = widget.session.place1 ?? widget.session.place;
-      currentCity = (defaultPlace != null && defaultPlace.isNotEmpty && defaultPlace != "Current Location")
-          ? defaultPlace
-          : "Tirunelveli";
+      if (_selectedLocation != null && _selectedLocation!.isNotEmpty && _selectedLocation != "Current Location") {
+        currentCity = _selectedLocation!;
+      } else {
+        final defaultPlace = widget.session.place1 ?? widget.session.place;
+        currentCity = (defaultPlace != null && defaultPlace.isNotEmpty && defaultPlace != "Current Location")
+            ? defaultPlace
+            : "Tirunelveli";
+      }
     }
 
-    // Fetch registered areas from API for this city
-    final dbAreas = await _fetchCityAreas(currentCity);
-    areas.addAll(dbAreas);
+    // 1. Fetch live registered backend contacts for this location (nearby & all)
+    try {
+      final dbAreas = await _fetchCityAreas(currentCity);
+      rawAreaNames.addAll(dbAreas);
+
+      final nearbyData = await widget.api.get('check-contact', {
+        'type': 'nearby',
+        'location': currentCity,
+        'limit': '60',
+      });
+      if (nearbyData is List) {
+        for (final item in nearbyData) {
+          if (item is Map) {
+            final loc1 = item['location1']?.toString().trim();
+            final loc = item['location']?.toString().trim();
+            final lat = double.tryParse(item['latitude']?.toString() ?? '');
+            final lng = double.tryParse(item['longitude']?.toString() ?? '');
+
+            if (loc1 != null && loc1.isNotEmpty) {
+              final areaName = loc1.split(',').first.trim();
+              if (areaName.isNotEmpty) {
+                rawAreaNames.add(areaName);
+                if (lat != null && lng != null) areaGeoMap[areaName] = GeoPoint(lat, lng);
+              }
+            }
+            if (loc != null && loc.isNotEmpty) {
+              final areaName = loc.split(',').first.trim();
+              if (areaName.isNotEmpty) {
+                rawAreaNames.add(areaName);
+                if (lat != null && lng != null) areaGeoMap[areaName] = GeoPoint(lat, lng);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching backend nearby profiles in Choose Area: $e");
+    }
+
+    // 2. Collect registered areas from memory candidates (_cachedDirectoryList, _nearbyProfiles, _localContacts)
+    for (final list in [_cachedDirectoryList, _nearbyProfiles, _results, _localContacts]) {
+      for (final item in list) {
+        String? loc1;
+        String? loc;
+        double? lat;
+        double? lng;
+
+        if (item is DirectoryContact) {
+          loc1 = item.location1;
+          loc = item.location;
+          lat = item.latitude;
+          lng = item.longitude;
+        } else if (item is Map) {
+          loc1 = item['location1']?.toString();
+          loc = item['location']?.toString();
+          lat = double.tryParse(item['latitude']?.toString() ?? '');
+          lng = double.tryParse(item['longitude']?.toString() ?? '');
+        }
+
+        if (loc1 != null && loc1.trim().isNotEmpty) {
+          final firstPart = loc1.split(',').first.trim();
+          if (firstPart.isNotEmpty && firstPart.toLowerCase() != 'current location') {
+            rawAreaNames.add(firstPart);
+            if (lat != null && lng != null) areaGeoMap[firstPart] = GeoPoint(lat, lng);
+          }
+        }
+        if (loc != null && loc.trim().isNotEmpty) {
+          final firstPart = loc.split(',').first.trim();
+          if (firstPart.isNotEmpty && firstPart.toLowerCase() != 'current location') {
+            rawAreaNames.add(firstPart);
+            if (lat != null && lng != null) areaGeoMap[firstPart] = GeoPoint(lat, lng);
+          }
+        }
+      }
+    }
+
+    // 3. Fallback registered areas for Palayamkottai / Tirunelveli region
+    rawAreaNames.addAll([
+      "Palayamkottai",
+      "KTC Nagar",
+      "Samathanampuram",
+      "Tirunelveli",
+      "Highground",
+      "Rahmath Nagar",
+      "Vannarpettai",
+      "Tirunelveli Junction",
+      "Melapalayam",
+      "Vasantham Nagar"
+    ]);
+
+    // 4. Calculate geographical distance for each area from user's current GPS position
+    if (userGeo != null) {
+      for (final area in rawAreaNames) {
+        if (!areaDistanceMap.containsKey(area)) {
+          final geo = areaGeoMap[area];
+          if (geo != null) {
+            areaDistanceMap[area] = LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, geo.latitude, geo.longitude);
+          } else {
+            // Assign fallback distance estimates for local known sub-districts
+            final aLower = area.toLowerCase();
+            if (aLower.contains('palayamkottai') || aLower.contains('ktc') || aLower.contains('samathanam')) {
+              areaDistanceMap[area] = 800.0;
+            } else if (aLower.contains('tirunelveli') || aLower.contains('highground') || aLower.contains('rahmath')) {
+              areaDistanceMap[area] = 2500.0;
+            } else {
+              areaDistanceMap[area] = 10000.0;
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Clean and sort area names strictly by distance (nearest to farthest)
+    final sortedAreaList = rawAreaNames
+        .where((a) => a.trim().isNotEmpty && a.toLowerCase() != 'current location' && a.toLowerCase() != 'all')
+        .toList();
+
+    sortedAreaList.sort((a, b) {
+      final distA = areaDistanceMap[a] ?? 999999.0;
+      final distB = areaDistanceMap[b] ?? 999999.0;
+      if ((distA - distB).abs() > 10) return distA.compareTo(distB);
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
 
     return {
       'city': currentCity,
       'currentArea': currentArea,
-      'areas': areas.where((a) => a.trim().isNotEmpty && a.toLowerCase() != currentCity.toLowerCase()).toList(),
+      'areas': sortedAreaList,
     };
   }
 
@@ -1416,9 +1571,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 final currentCity = (locationData['city'] as String?) ?? initialCity;
                 final allAreas = (locationData['areas'] as List<String>?) ?? <String>[];
 
-                final filteredAreas = allAreas
-                    .where((a) => LocationService.isLocationMatch(a, filter))
-                    .toList();
+                final filteredAreas = filter.trim().isEmpty
+                    ? allAreas
+                    : allAreas
+                        .where((a) => LocationService.isLocationMatch(a, filter))
+                        .toList();
 
                 return Padding(
                   padding: EdgeInsets.only(
