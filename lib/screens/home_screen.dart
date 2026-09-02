@@ -18,6 +18,27 @@ import '../services/countries.dart';
 import '../widgets/country_picker_dialog.dart';
 import '../services/location_service.dart';
 
+class NearbyCacheData {
+  static List<DirectoryContact>? profiles;
+  static GeoPoint? cachedGeo;
+  static String? cachedScopeKey;
+  static DateTime? cachedTime;
+  static bool isFetching = false;
+
+  static bool isValid(String? currentScope, GeoPoint? currentGeo) {
+    if (profiles == null || profiles!.isEmpty || cachedTime == null) return false;
+    if (DateTime.now().difference(cachedTime!).inMinutes > 20) return false;
+    if (cachedScopeKey != currentScope) return false;
+    if (currentGeo != null && cachedGeo != null) {
+      final dist = LocationService.calculateDistanceInMeters(
+        currentGeo.latitude, currentGeo.longitude, cachedGeo!.latitude, cachedGeo!.longitude
+      );
+      if (dist > 5000) return false;
+    }
+    return true;
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.api, required this.store, required this.session, required this.onSearchModeChanged});
   final ApiClient api;
@@ -46,6 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _userHasCustomScope = false;
   List<Map<String, dynamic>> _cachedDirectoryList = [];
   GeoPoint? _currentUserGeo;
+  List<DirectoryContact> _nearbyProfiles = [];
+  bool _loadingNearby = false;
 
   String _normalizePhone(String? p) {
     if (p == null) return '';
@@ -169,6 +192,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _focus.addListener(() {
       if (_focus.hasFocus) {
         _loadLocalContacts();
+        if (NearbyCacheData.profiles != null && NearbyCacheData.profiles!.isNotEmpty) {
+          _nearbyProfiles = NearbyCacheData.profiles!;
+        } else {
+          _triggerBackgroundNearbyFetch();
+        }
         if (!_isSearching) {
           setState(() {
             _isSearching = true;
@@ -217,6 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final dirData = await widget.api.get('check-contact', {
         'type': 'all',
         'location': '',
+        'limit': '15',
       });
       if (dirData is List) {
         final list = <Map<String, dynamic>>[];
@@ -229,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _cachedDirectoryList = list;
           });
+          _triggerBackgroundNearbyFetch();
         }
       }
     } catch (e) {
@@ -862,6 +892,235 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _triggerBackgroundNearbyFetch({bool forceRefresh = false}) async {
+    final currentScope = _scopeLabel;
+    final currentGeo = _currentUserGeo;
+
+    if (!forceRefresh && NearbyCacheData.isValid(currentScope, currentGeo)) {
+      if (mounted && _nearbyProfiles.isEmpty) {
+        setState(() {
+          _nearbyProfiles = NearbyCacheData.profiles!;
+          _loadingNearby = false;
+        });
+      }
+      return;
+    }
+
+    if (NearbyCacheData.isFetching) return;
+    NearbyCacheData.isFetching = true;
+
+    if (_nearbyProfiles.isEmpty && NearbyCacheData.profiles == null && mounted) {
+      setState(() => _loadingNearby = true);
+    }
+
+    Future.microtask(() async {
+      try {
+        final userAreaStr = widget.session.place1 ?? widget.session.place ?? '';
+
+        final dirData = await widget.api.get('check-contact', {
+          'type': 'nearby',
+          'location': userAreaStr,
+          'limit': '60',
+        });
+
+        List<Map<String, dynamic>> rawList = [];
+        if (dirData is List) {
+          rawList = dirData
+              .whereType<Map>()
+              .where((item) => item['name'] != null && item['name'].toString().trim().isNotEmpty)
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        }
+
+        final rawContacts = rawList.map((e) => DirectoryContact.fromJson(e)).toList();
+
+        // Helper function for unique Business Profile ID key
+        String getProfileKey(DirectoryContact c) {
+          if (c.id != null && c.id!.trim().isNotEmpty && c.id!.trim().toLowerCase() != 'null') {
+            return 'id_${c.id!.trim()}';
+          }
+          final nameClean = c.name.trim().toLowerCase();
+          final serviceClean = c.service.trim().toLowerCase();
+          final phoneClean = c.phone.trim();
+          return 'profile_${nameClean}_${serviceClean}_$phoneClean';
+        }
+
+        // Deduplicate incoming contacts by unique Business Profile ID / signature
+        final Map<String, DirectoryContact> uniqueMap = {};
+        for (final c in rawContacts) {
+          final key = getProfileKey(c);
+          if (!uniqueMap.containsKey(key)) {
+            uniqueMap[key] = c;
+          }
+        }
+        final contacts = uniqueMap.values.toList();
+
+        final eligible = contacts.where((c) {
+          if (c.subscriptionStatus == 'expired') return false;
+          if (c.subscriptionEnd != null && c.subscriptionEnd!.isNotEmpty) {
+            final endDate = DateTime.tryParse(c.subscriptionEnd!);
+            if (endDate != null && DateTime.now().isAfter(endDate)) return false;
+          }
+          return true;
+        }).toList();
+
+        final userGeo = await _getUserCurrentGeo();
+        final Map<String, GeoPoint> resolvedGeoMap = await LocationService.resolveMultipleCoordinates(eligible);
+
+        final userAreaLower = (userAreaStr.isEmpty || userAreaStr.toLowerCase() == 'current location') ? '' : userAreaStr.toLowerCase();
+        final userAreaParts = userAreaLower.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty && p != 'current location').toList();
+
+        double calcDistance(DirectoryContact c) {
+          if (userGeo == null) return double.infinity;
+          final key = c.id ?? c.phone;
+          final g = resolvedGeoMap[key] ?? (c.latitude != null && c.longitude != null ? GeoPoint(c.latitude!, c.longitude!) : null);
+          if (g != null) {
+            return LocationService.calculateDistanceInMeters(userGeo.latitude, userGeo.longitude, g.latitude, g.longitude);
+          }
+          return double.infinity;
+        }
+
+        int calcLocTier(DirectoryContact c) {
+          if (userAreaLower.isEmpty) return 5;
+          final fullText = '${c.location ?? ''} ${c.location1 ?? ''} ${c.city ?? ''} ${c.state ?? ''}'.toLowerCase().trim();
+          if (fullText.isEmpty) return 6;
+          for (final p in userAreaParts) {
+            if (LocationService.isLocationMatch(fullText, p)) return 1;
+          }
+          if (c.city != null && c.city!.isNotEmpty && LocationService.isLocationMatch(userAreaLower, c.city!)) return 2;
+          if (c.state != null && c.state!.isNotEmpty && LocationService.isLocationMatch(userAreaLower, c.state!)) return 3;
+          return 4;
+        }
+
+        final wrappers = eligible.map((c) {
+          final isMyContact = _isMyContactMatch(c);
+          final bal = double.tryParse(c.priorityBalance) ?? 0.0;
+          final isSponsored = !isMyContact && (bal > 0 || c.priority == '0');
+          return _CandidateWrapper(
+            contact: c,
+            priorityTier: isMyContact ? 1 : (isSponsored ? 2 : 3),
+            searchScore: 0,
+            priorityBalance: bal,
+            distanceMeters: calcDistance(c),
+            locationHierarchyTier: calcLocTier(c),
+            nameLower: c.name.toLowerCase(),
+          );
+        }).toList();
+
+        int compareProximity(_CandidateWrapper a, _CandidateWrapper b) {
+          final aHasDist = a.distanceMeters.isFinite;
+          final bHasDist = b.distanceMeters.isFinite;
+
+          if (aHasDist && bHasDist) {
+            if ((a.distanceMeters - b.distanceMeters).abs() > 100) {
+              return a.distanceMeters.compareTo(b.distanceMeters);
+            }
+          } else if (aHasDist != bHasDist) {
+            if (a.locationHierarchyTier == b.locationHierarchyTier) {
+              return aHasDist ? -1 : 1;
+            }
+          }
+
+          if (a.locationHierarchyTier != b.locationHierarchyTier) {
+            return a.locationHierarchyTier.compareTo(b.locationHierarchyTier);
+          }
+
+          if (aHasDist && bHasDist) {
+            return a.distanceMeters.compareTo(b.distanceMeters);
+          }
+
+          return a.nameLower.compareTo(b.nameLower);
+        }
+
+        wrappers.sort(compareProximity);
+
+        // Partition candidates into Nearby pool ONLY (exclude distant profiles from other states/distant regions)
+        final nearbyPool = <_CandidateWrapper>[];
+        final minDistance = wrappers.isNotEmpty ? wrappers.first.distanceMeters : double.infinity;
+
+        for (final w in wrappers) {
+          final isNearby = (w.distanceMeters <= 150000) ||
+                           (w.locationHierarchyTier <= 3) ||
+                           (minDistance.isFinite && w.distanceMeters <= minDistance + 50000);
+          if (isNearby) {
+            nearbyPool.add(w);
+          }
+        }
+
+        List<_CandidateWrapper> selectFromPool(List<_CandidateWrapper> pool, int maxTotal) {
+          final selected = <_CandidateWrapper>[];
+          final selectedKeys = <String>{};
+
+          bool tryAdd(_CandidateWrapper w) {
+            final key = getProfileKey(w.contact);
+            if (!selectedKeys.contains(key)) {
+              selected.add(w);
+              selectedKeys.add(key);
+              return true;
+            }
+            return false;
+          }
+
+          final myContacts = pool.where((w) => w.priorityTier == 1).toList();
+          final sponsored = pool.where((w) => w.priorityTier == 2).toList();
+          final others = pool.where((w) => w.priorityTier == 3).toList();
+
+          for (final w in myContacts.take(4)) {
+            if (selected.length < maxTotal) tryAdd(w);
+          }
+
+          for (final w in sponsored.take(4)) {
+            if (selected.length < maxTotal) tryAdd(w);
+          }
+
+          for (final w in others.take(4)) {
+            if (selected.length < maxTotal) tryAdd(w);
+          }
+
+          if (selected.length < maxTotal) {
+            for (final w in pool) {
+              if (selected.length >= maxTotal) break;
+              tryAdd(w);
+            }
+          }
+
+          return selected;
+        }
+
+        List<_CandidateWrapper> finalSelection = selectFromPool(nearbyPool, 12);
+
+        final selectedMyContacts = finalSelection.where((w) => w.priorityTier == 1).toList()..sort(compareProximity);
+        final selectedSponsored = finalSelection.where((w) => w.priorityTier == 2).toList()..sort(compareProximity);
+        final selectedOthers = finalSelection.where((w) => w.priorityTier == 3).toList()..sort(compareProximity);
+
+        final orderedWrappers = <_CandidateWrapper>[
+          ...selectedMyContacts,
+          ...selectedSponsored,
+          ...selectedOthers,
+        ];
+
+        final sortedNearby = orderedWrappers.map((w) => w.contact).toList();
+
+        NearbyCacheData.profiles = sortedNearby;
+        NearbyCacheData.cachedGeo = userGeo;
+        NearbyCacheData.cachedScopeKey = currentScope;
+        NearbyCacheData.cachedTime = DateTime.now();
+
+        if (mounted) {
+          setState(() {
+            _nearbyProfiles = sortedNearby;
+            _loadingNearby = false;
+          });
+        }
+      } catch (e) {
+        debugPrint("Error loading nearby profiles: $e");
+        if (mounted) setState(() => _loadingNearby = false);
+      } finally {
+        NearbyCacheData.isFetching = false;
+      }
+    });
+  }
+
   Future<void> _fetchCurrentLocation() async {
     setState(() => _loading = true);
     try {
@@ -987,14 +1246,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<Map<String, String>?> _validateGooglePlace(String query) async {
-    final q = query.trim();
-    if (q.length < 2) return null;
+    final qClean = query.trim();
+    if (qClean.length < 2) return null;
+    final qSpaceless = LocationService.normalizeSpaceless(qClean);
+    if (qSpaceless.isEmpty) return null;
+
+    final formattedQuery = LocationService.formatLocationTitle(qClean);
+
     try {
       final geocoding = Geocoding();
-      List<Location> locations = await geocoding.locationFromAddress(q);
+      List<Location> locations = [];
+      try {
+        locations = await geocoding.locationFromAddress(qClean);
+      } catch (_) {}
+
+      if (locations.isEmpty && !qClean.contains(' ')) {
+        try {
+          locations = await geocoding.locationFromAddress(formattedQuery);
+        } catch (_) {}
+      }
+
       if (locations.isNotEmpty) {
         final loc = locations.first;
-        List<Placemark> placemarks = await geocoding.placemarkFromCoordinates(loc.latitude, loc.longitude);
+        List<Placemark> placemarks = [];
+        try {
+          placemarks = await geocoding.placemarkFromCoordinates(loc.latitude, loc.longitude);
+        } catch (_) {}
+
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
           final subLoc = p.subLocality?.trim();
@@ -1004,34 +1282,38 @@ class _HomeScreenState extends State<HomeScreen> {
           final adminArea = p.administrativeArea?.trim();
           final country = p.country?.trim();
 
-          final formattedQuery = q.split(' ').map((w) => w.isNotEmpty ? "${w[0].toUpperCase()}${w.substring(1)}" : "").join(' ');
-          final qLower = q.toLowerCase();
+          bool fieldMatches(String? fieldVal) {
+            if (fieldVal == null || fieldVal.trim().isEmpty) return false;
+            return LocationService.isLocationMatch(fieldVal, qClean);
+          }
 
           String selectedName = formattedQuery;
-          String subtitle = [locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != qLower).join(', ');
+          String subtitle = [locality, adminArea, country]
+              .where((s) => s != null && s.isNotEmpty && !fieldMatches(s))
+              .join(', ');
 
-          if (subLoc != null && subLoc.isNotEmpty && subLoc.toLowerCase().contains(qLower)) {
-            selectedName = subLoc;
-            subtitle = [locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != subLoc.toLowerCase()).join(', ');
-          } else if (thoroughfare != null && thoroughfare.isNotEmpty && thoroughfare.toLowerCase().contains(qLower)) {
-            selectedName = thoroughfare;
-            subtitle = [subLoc, locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != thoroughfare.toLowerCase()).join(', ');
-          } else if (name != null && name.isNotEmpty && name.toLowerCase().contains(qLower)) {
-            selectedName = name;
-            subtitle = [subLoc, locality, adminArea, country].where((s) => s != null && s.isNotEmpty && s.toLowerCase() != name.toLowerCase()).join(', ');
-          } else if (locality != null && locality.isNotEmpty && locality.toLowerCase().contains(qLower)) {
-            selectedName = locality;
-            subtitle = [adminArea, country].where((s) => s != null && s.isNotEmpty).join(', ');
-          } else if (adminArea != null && adminArea.isNotEmpty && adminArea.toLowerCase().contains(qLower)) {
-            selectedName = adminArea;
+          if (fieldMatches(adminArea)) {
+            selectedName = adminArea!;
             subtitle = (country != null && country.isNotEmpty) ? "State / Region in $country" : "State / Region";
-          } else if (country != null && country.isNotEmpty && country.toLowerCase().contains(qLower)) {
-            selectedName = country;
+          } else if (fieldMatches(locality)) {
+            selectedName = locality!;
+            subtitle = [adminArea, country].where((s) => s != null && s.isNotEmpty).join(', ');
+          } else if (fieldMatches(subLoc)) {
+            selectedName = subLoc!;
+            subtitle = [locality, adminArea, country].where((s) => s != null && s.isNotEmpty && !fieldMatches(s)).join(', ');
+          } else if (fieldMatches(thoroughfare)) {
+            selectedName = thoroughfare!;
+            subtitle = [subLoc, locality, adminArea, country].where((s) => s != null && s.isNotEmpty && !fieldMatches(s)).join(', ');
+          } else if (fieldMatches(name)) {
+            selectedName = name!;
+            subtitle = [subLoc, locality, adminArea, country].where((s) => s != null && s.isNotEmpty && !fieldMatches(s)).join(', ');
+          } else if (fieldMatches(country)) {
+            selectedName = country!;
             subtitle = "Country";
           } else {
             selectedName = formattedQuery;
             subtitle = [subLoc, locality, adminArea, country]
-                .where((s) => s != null && s.isNotEmpty && s.toLowerCase() != qLower)
+                .where((s) => s != null && s.isNotEmpty && !fieldMatches(s))
                 .join(', ');
           }
 
@@ -1044,7 +1326,6 @@ class _HomeScreenState extends State<HomeScreen> {
             'subtitle': subtitle,
           };
         }
-        final formattedQuery = q.split(' ').map((w) => w.isNotEmpty ? "${w[0].toUpperCase()}${w.substring(1)}" : "").join(' ');
         return {
           'name': formattedQuery,
           'subtitle': 'Google Maps Verified Location',
@@ -1080,7 +1361,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 final allAreas = (locationData['areas'] as List<String>?) ?? <String>[];
 
                 final filteredAreas = allAreas
-                    .where((a) => a.toLowerCase().contains(filter.toLowerCase()))
+                    .where((a) => LocationService.isLocationMatch(a, filter))
                     .toList();
 
                 return Padding(
@@ -1424,57 +1705,138 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchResultsList() {
-    return _loading
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)))
-        : _hasSearched && _results.isEmpty && _search.text.isNotEmpty
-            ? Padding(
-                padding: const EdgeInsets.only(top: 60),
-                child: Column(
-                  children: [
-                    Icon(Icons.search_off, size: 52, color: Colors.grey.shade400),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'No contacts found', 
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF202124), fontFamily: 'Poppins')),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Try searching for another name, title, or phone number',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontFamily: 'Poppins')),
-                  ],
-                ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.only(top: 6, bottom: 20),
-                itemCount: _results.length,
-                itemBuilder: (c, i) {
-                  final contact = _results[i];
-                  final isFav = _favs.any((e) => e.phone == contact.phone);
-                  final isMyContact = _isMyContactMatch(contact);
-                  final isSponsored = !isMyContact && 
-                                      ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)));
+    }
 
-                  return ContactCard(
-                    contact: contact,
-                    isFavourite: isFav,
-                    showFavouriteIcon: false,
-                    isMyContact: isMyContact,
-                    isSponsored: isSponsored,
-                    isFirstThree: i < 3,
-                    onCall: isMyContact ? null : () => widget.store.addToHistory(contact),
-                    onFavouriteToggle: () async {
-                      await widget.store.toggleFavourite(contact);
+    if (_search.text.trim().isEmpty) {
+      final rawNearbyList = _nearbyProfiles.isNotEmpty ? _nearbyProfiles : (NearbyCacheData.profiles ?? []);
+      if (_loadingNearby && rawNearbyList.isEmpty) {
+        return const Center(child: CircularProgressIndicator(color: Color(0xFF6C757D)));
+      }
+
+      final Set<String> seenKeys = {};
+      final List<DirectoryContact> nearbyList = [];
+      for (final c in rawNearbyList) {
+        final key = (c.id != null && c.id!.trim().isNotEmpty && c.id!.trim().toLowerCase() != 'null')
+            ? 'id_${c.id!.trim()}'
+            : 'profile_${c.name.trim().toLowerCase()}_${c.service.trim().toLowerCase()}_${c.phone.trim()}';
+        if (!seenKeys.contains(key)) {
+          seenKeys.add(key);
+          nearbyList.add(c);
+        }
+      }
+
+      if (nearbyList.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 6),
+            child: Row(
+              children: const [
+                Icon(Icons.near_me, size: 18, color: Color(0xFF1A73E8)),
+                SizedBox(width: 6),
+                Text(
+                  'Nearby Business Profiles',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF202124),
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.only(top: 2, bottom: 20),
+              itemCount: nearbyList.length,
+              itemBuilder: (c, i) {
+                final contact = nearbyList[i];
+                final isFav = _favs.any((e) => e.phone == contact.phone);
+                final isMyContact = _isMyContactMatch(contact);
+                final isSponsored = !isMyContact &&
+                    ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
+
+                return ContactCard(
+                  contact: contact,
+                  isFavourite: isFav,
+                  showFavouriteIcon: false,
+                  isMyContact: isMyContact,
+                  isSponsored: isSponsored,
+                  isFirstThree: i < 3,
+                  onCall: isMyContact ? null : () => widget.store.addToHistory(contact),
+                  onFavouriteToggle: () async {
+                    await widget.store.toggleFavourite(contact);
+                    _loadFavs();
+                  },
+                  onTap: () {
+                    widget.onSearchModeChanged(false);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
                       _loadFavs();
-                    },
-                    onTap: () {
-                      widget.onSearchModeChanged(false);
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
-                        _loadFavs();
-                        if (_isSearching) widget.onSearchModeChanged(true);
-                      });
-                    },
-                  );
+                      if (_isSearching) widget.onSearchModeChanged(true);
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+    return _hasSearched && _results.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.only(top: 60),
+            child: Column(
+              children: [
+                Icon(Icons.search_off, size: 52, color: Colors.grey.shade400),
+                const SizedBox(height: 12),
+                const Text(
+                  'No contacts found', 
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF202124), fontFamily: 'Poppins')),
+                const SizedBox(height: 4),
+                Text(
+                  'Try searching for another name, title, or phone number',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontFamily: 'Poppins')),
+              ],
+            ),
+          )
+        : ListView.builder(
+            padding: const EdgeInsets.only(top: 6, bottom: 20),
+            itemCount: _results.length,
+            itemBuilder: (c, i) {
+              final contact = _results[i];
+              final isFav = _favs.any((e) => e.phone == contact.phone);
+              final isMyContact = _isMyContactMatch(contact);
+              final isSponsored = !isMyContact && 
+                                  ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
+
+              return ContactCard(
+                contact: contact,
+                isFavourite: isFav,
+                showFavouriteIcon: false,
+                isMyContact: isMyContact,
+                isSponsored: isSponsored,
+                isFirstThree: i < 3,
+                onCall: isMyContact ? null : () => widget.store.addToHistory(contact),
+                onFavouriteToggle: () async {
+                  await widget.store.toggleFavourite(contact);
+                  _loadFavs();
+                },
+                onTap: () {
+                  widget.onSearchModeChanged(false);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(contact: contact))).then((_) {
+                    _loadFavs();
+                    if (_isSearching) widget.onSearchModeChanged(true);
+                  });
                 },
               );
+            },
+          );
   }
 
   Widget _buildSearchCard() {

@@ -17,6 +17,40 @@ class GeoPoint {
 class LocationService {
   static final Map<String, GeoPoint?> _geoCache = {};
 
+  /// Normalizes a location string to lowercase alphanumeric without whitespace or symbols.
+  static String normalizeSpaceless(String input) {
+    return input.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  /// Safely formats a location search string into title-case without throwing RangeError.
+  static String formatLocationTitle(String rawInput) {
+    final words = rawInput.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return rawInput.trim();
+    return words.map((w) {
+      if (w.isEmpty) return '';
+      return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
+    }).join(' ');
+  }
+
+  /// Checks if target location string matches query string safely (supporting spaces/no-spaces).
+  static bool isLocationMatch(String? target, String query) {
+    if (target == null || target.trim().isEmpty) return false;
+    final qClean = query.trim();
+    if (qClean.isEmpty) return false;
+
+    final targetLower = target.trim().toLowerCase();
+    final queryLower = qClean.toLowerCase();
+    if (targetLower.contains(queryLower) || queryLower.contains(targetLower)) {
+      return true;
+    }
+
+    final targetSpaceless = normalizeSpaceless(target);
+    final querySpaceless = normalizeSpaceless(qClean);
+    if (querySpaceless.isEmpty) return false;
+
+    return targetSpaceless.contains(querySpaceless) || querySpaceless.contains(targetSpaceless);
+  }
+
   static Future<List<csc.Country>> getCountries() async {
     return await csc.getAllCountries();
   }

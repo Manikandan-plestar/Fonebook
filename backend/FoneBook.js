@@ -594,9 +594,35 @@ app.get('/check-contact', async (req, res) => {
         var lastElement = locationArray[locationArray.length - 1];
         var checkPhoneSql = "(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish='yes' and deleted_contact=0 and (promote_city='All' or ? like CONCAT('%', promote_city, '%')) ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts where (location LIKE Concat('%',?,'%') OR location1 LIKE Concat('%',?,'%') OR city LIKE Concat('%',?,'%') OR state LIKE Concat('%',?,'%')) AND publish='yes' and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);";
         var value = [lastElement, lastElement, lastElement, lastElement, lastElement];
+    } else if (type == "nearby") {
+        const limitVal = req.query.limit ? (parseInt(req.query.limit, 10) || 60) : 60;
+        if (location && location.trim().length > 0) {
+            const locParts = location.split(',').map(s => s.trim()).filter(Boolean);
+            const p1 = locParts.length > 0 ? `%${locParts[0]}%` : '%';
+            const p2 = locParts.length > 1 ? `%${locParts[1]}%` : p1;
+
+            var checkPhoneSql = `SELECT * FROM (SELECT * FROM contacts WHERE publish='yes' AND deleted_contact=0 AND (location LIKE ? OR location1 LIKE ? OR city LIKE ? OR state LIKE ? OR location LIKE ? OR location1 LIKE ? OR city LIKE ? OR state LIKE ?) GROUP BY id ORDER BY priority_balance DESC, id DESC LIMIT ?) AS subquery;`;
+            var value = [p1, p1, p1, p1, p2, p2, p2, p2, limitVal];
+        } else {
+            var checkPhoneSql = `SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" AND deleted_contact=0 GROUP BY id ORDER BY priority_balance DESC, id DESC LIMIT ?) AS subquery;`;
+            var value = [limitVal];
+        }
     } else if (type == "all") {
-        var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);`;
-        var value = [];
+        const limitVal = req.query.limit ? (parseInt(req.query.limit, 10) || 50) : 50;
+        if (location && location.trim().length > 0) {
+            const locParts = location.split(',').map(s => s.trim()).filter(Boolean);
+            const primaryLoc = locParts.length > 0 ? locParts[0] : location.trim();
+            const primaryPattern = `%${primaryLoc}%`;
+
+            var checkPhoneSql = `(SELECT * FROM contacts WHERE publish='yes' AND deleted_contact=0 AND (location LIKE ? OR location1 LIKE ? OR city LIKE ? OR state LIKE ?) GROUP BY id ORDER BY priority_balance DESC, id DESC LIMIT ?) UNION (SELECT * FROM contacts WHERE publish='yes' AND deleted_contact=0 GROUP BY id ORDER BY priority_balance DESC, id DESC LIMIT ?);`;
+            var value = [primaryPattern, primaryPattern, primaryPattern, primaryPattern, limitVal, limitVal];
+        } else if (req.query.limit) {
+            var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC limit ?) AS subquery);`;
+            var value = [limitVal];
+        } else {
+            var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);`;
+            var value = [];
+        }
     } else {
         var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC limit 200) AS subquery);`;
         var value = [];

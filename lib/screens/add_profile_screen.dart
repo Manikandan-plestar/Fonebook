@@ -342,6 +342,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   }
 
   Future<void> _getAddress() async {
+    if (_isFetchingAddress) return;
     setState(() => _isFetchingAddress = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -401,6 +402,18 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       debugPrint("GPS Error: $e");
     } finally {
       if (mounted) setState(() => _isFetchingAddress = false);
+    }
+  }
+
+  void _onLocationFieldTap() {
+    if (_isFetchingAddress) return;
+    final isEdit = widget.contact != null || widget.profileId != null || (widget.phone != null && widget.initialPhone == null);
+    if (!isEdit) {
+      _getAddress();
+    } else {
+      if (_locationController.text.trim().isEmpty) {
+        _getAddress();
+      }
     }
   }
 
@@ -974,6 +987,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                       'Business location (GPS Only)', 
                       isReadOnly: true, 
                       maxLines: 3,
+                      onTap: _onLocationFieldTap,
                       suffixIcon: _isFetchingAddress
                           ? const Padding(
                               padding: EdgeInsets.all(12),
@@ -1247,6 +1261,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     int maxLines = 1,
     IconData? prefixIcon,
     Widget? suffixIcon,
+    VoidCallback? onTap,
   }) {
     Widget iconWidget;
     final hLower = hint.toLowerCase();
@@ -1278,6 +1293,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
       child: TextField(
         controller: controller,
         readOnly: isReadOnly,
+        onTap: onTap,
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
         maxLines: maxLines,

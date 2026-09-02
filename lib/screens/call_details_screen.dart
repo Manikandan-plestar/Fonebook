@@ -275,101 +275,90 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     final displayPhone = widget.contact.phone;
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 0.5,
-        automaticallyImplyLeading: false,
-        title: const Text(
-          'Call Details',
-          style: TextStyle(color: Color(0xFF202124), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins'),
-        ),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF4C5B8F)))
-          : Column(
-              children: [
-                // Top Header Box
-                Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.all(20),
-                  width: double.infinity,
-                  child: Column(
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          _buildAvatar(displayName, widget.contact.image),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  displayName,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF202124),
-                                    fontFamily: 'Poppins',
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  displayPhone,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color(0xFF5F6368),
-                                    fontFamily: 'Poppins',
-                                  ),
-                                ),
-                              ],
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF4C5B8F)))
+            : Column(
+                children: [
+                  // Top Header Bar matching Recent page style
+                  Container(
+                    height: 60,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF5F5F5),
+                      border: Border(bottom: BorderSide(color: Color(0xFFD7D7D7), width: 1)),
+                    ),
+                    child: Row(
+                      children: [
+                        Image.asset(
+                          'assets/images/phone_book_logo_round.png',
+                          width: 34,
+                          height: 34,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Call Details',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF232323),
+                              fontFamily: 'Poppins',
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      // Action buttons: Call & Message
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _makeCall,
-                              icon: const Icon(Icons.call, size: 18),
-                              label: const Text('Call', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1E8E3E),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                                elevation: 0,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _openWhatsApp,
-                              icon: Image.asset('assets/images/whatsapp.png', width: 20, height: 20),
-                              label: const Text(
-                                'WhatsApp',
-                                style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: Color(0xFF25D366)),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFF25D366)),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+
+                  // Top User Info Card matching Call History card styling
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Card(
+                      elevation: 0.5,
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _buildAvatar(displayName, widget.contact.image),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF202124),
+                                      fontFamily: 'Poppins',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    displayPhone,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF5F6368),
+                                      fontFamily: 'Poppins',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
 
                 const SizedBox(height: 12),
 
@@ -496,6 +485,7 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                 ),
               ],
             ),
+          ),
     );
   }
 }
