@@ -40,6 +40,7 @@ class NearbyCacheData {
 }
 
 enum LocationInitState { uninitialized, initializing, ready, error }
+enum LocationScopeType { currentLocation, searchedLocation }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.api, required this.store, required this.session, required this.onSearchModeChanged});
@@ -67,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _scopeLabel = 'Location(Current Location)';
   String? _selectedLocation; // For filtering
   bool _userHasCustomScope = false;
+  LocationScopeType _selectedLocationType = LocationScopeType.currentLocation;
   List<Map<String, dynamic>> _cachedDirectoryList = [];
   GeoPoint? _currentUserGeo;
   List<DirectoryContact> _nearbyProfiles = [];
@@ -75,6 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Completer<void>? _locationInitCompleter;
 
   Future<void> _initLocation({bool forceRefresh = false}) async {
+    if (forceRefresh) {
+      _userHasCustomScope = false;
+      _selectedLocationType = LocationScopeType.currentLocation;
+    }
     if (!forceRefresh && _locationState == LocationInitState.ready) return;
     if (!forceRefresh && _locationState == LocationInitState.initializing && _locationInitCompleter != null) {
       return _locationInitCompleter!.future;
@@ -145,8 +151,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 : "Tirunelveli";
           }
 
-          if (mounted && !_userHasCustomScope) {
+          if (mounted && (!_userHasCustomScope || _selectedLocationType == LocationScopeType.currentLocation || forceRefresh)) {
             setState(() {
+              _userHasCustomScope = false;
+              _selectedLocationType = LocationScopeType.currentLocation;
               _scopeLabel = "Location($cityArea)";
               _selectedLocation = cityArea;
               _locationState = LocationInitState.ready;
@@ -173,8 +181,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ? place
         : "Tirunelveli";
 
-    if (mounted && !_userHasCustomScope) {
+    if (mounted) {
       setState(() {
+        _userHasCustomScope = false;
+        _selectedLocationType = LocationScopeType.currentLocation;
         _scopeLabel = "Location($fallbackCity)";
         _selectedLocation = fallbackCity;
         _locationState = LocationInitState.ready;
@@ -1190,6 +1200,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchCurrentLocation() async {
     if (mounted) setState(() => _loading = true);
     try {
+      _userHasCustomScope = false;
+      _selectedLocationType = LocationScopeType.currentLocation;
+      NearbyCacheData.profiles = null;
+      NearbyCacheData.cachedTime = null;
       await _initLocation(forceRefresh: true);
       if (_search.text.isNotEmpty) {
         await _doSearch(_search.text);
@@ -1269,20 +1283,16 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint("GPS Geocoding error: $e");
     }
 
-    if ((currentCity == "Current Location" || currentCity.isEmpty) && _formattedScopeLabel.isNotEmpty) {
-      currentCity = _formattedScopeLabel;
+    if (currentCity == "Current Location" || currentCity.isEmpty) {
+      final defaultPlace = widget.session.place1 ?? widget.session.place;
+      currentCity = (defaultPlace != null && defaultPlace.isNotEmpty && defaultPlace != "Current Location")
+          ? defaultPlace
+          : "Tirunelveli";
     }
 
     // Fetch registered areas from API for this city
     final dbAreas = await _fetchCityAreas(currentCity);
     areas.addAll(dbAreas);
-
-    final contactAreas = _results
-        .map((c) => c.location1?.split(',').first.trim())
-        .whereType<String>()
-        .where((a) => a.isNotEmpty)
-        .toList();
-    areas.addAll(contactAreas);
 
     return {
       'city': currentCity,
@@ -1449,7 +1459,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      
+
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: Container(
@@ -1460,23 +1470,24 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           child: const Icon(Icons.my_location, color: Color(0xFF6C757D), size: 20),
                         ),
-                        title: const Text('Current  Location', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+                        title: const Text('Current Location', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
                         subtitle: Text(currentCity, style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
                         onTap: () {
                           Navigator.pop(bContext);
-                          _userHasCustomScope = true;
+                          _selectedLocationType = LocationScopeType.currentLocation;
+                          _userHasCustomScope = false;
                           _fetchCurrentLocation();
                         },
                       ),
-                      
+
                       const Divider(height: 24),
-                      
+
                       Text(
                         'Nearby Areas',
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6C757D), fontFamily: 'Poppins', letterSpacing: 0.5),
                       ),
                       const SizedBox(height: 8),
-                      
+
                       SizedBox(
                         height: 220,
                         child: isLoading
@@ -1531,6 +1542,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   onTap: () {
                                                     Navigator.pop(bContext);
                                                     setState(() {
+                                                      _selectedLocationType = LocationScopeType.searchedLocation;
                                                       _userHasCustomScope = true;
                                                       _scopeLabel = 'Location($area)';
                                                       _selectedLocation = area;
@@ -1550,6 +1562,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 final cleanSub = subtitle.replaceAll('Google Maps Verified Location', '').trim();
                                                 final locText = cleanSub.isNotEmpty ? '$validArea, $cleanSub' : validArea;
                                                 setState(() {
+                                                  _selectedLocationType = LocationScopeType.searchedLocation;
                                                   _userHasCustomScope = true;
                                                   _scopeLabel = 'Location($locText)';
                                                   _selectedLocation = validArea;
@@ -1597,6 +1610,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             onTap: () {
                                               Navigator.pop(bContext);
                                               setState(() {
+                                                _selectedLocationType = LocationScopeType.searchedLocation;
                                                 _userHasCustomScope = true;
                                                 _scopeLabel = 'Location($area)';
                                                 _selectedLocation = area;
