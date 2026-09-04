@@ -67,13 +67,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
               const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()))
             else if (!_payment.isAvailable)
               const Text(
-                'Google Play Store is not available on this device. Please test on a real device with Play Store.',
+                'In-App Purchase is not available on this device.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontFamily: 'Poppins', color: Colors.red),
               )
             else if (_payment.products.isEmpty)
               const Text(
-                'No products found. Ensure you have verified your Merchant Account and activated the products in Play Console.',
+                'No promotion packages found. Please check your connection or try again later.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontFamily: 'Poppins', color: Color(0xFF272000)),
               )

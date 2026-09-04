@@ -1905,7 +1905,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Saved',
+              title: 'Contacts',
               showMenu: true,
               api: widget.api,
               session: widget.session,

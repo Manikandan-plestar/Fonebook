@@ -32,8 +32,26 @@ class _RecentScreenState extends State<RecentScreen> {
     _load();
   }
 
+  String _normalizePhone(String? phone) {
+    if (phone == null || phone.isEmpty) return '';
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length >= 10) {
+      return digits.substring(digits.length - 10);
+    }
+    return digits;
+  }
+
+  String _getContactGroupKey(DirectoryContact c) {
+    final norm = _normalizePhone(c.phone);
+    if (norm.isNotEmpty) {
+      return 'phone_$norm';
+    }
+    return 'name_${c.name.trim().toLowerCase()}';
+  }
+
   void _applyFilters() {
-    _filtered = _list.where((e) {
+    // 1. Filter raw call entries by filter tab and search query
+    final filteredRaw = _list.where((e) {
       bool matchesTab = true;
       final serviceLower = e.service.toLowerCase();
       if (_selectedFilter == 'Missed') {
@@ -54,6 +72,32 @@ class _RecentScreenState extends State<RecentScreen> {
 
       return matchesTab && matchesSearch;
     }).toList();
+
+    // 2. Group entries by unique contact key, keeping the most recent call entry
+    final Map<String, DirectoryContact> groupedMap = {};
+    for (final contact in filteredRaw) {
+      final key = _getContactGroupKey(contact);
+      if (!groupedMap.containsKey(key)) {
+        groupedMap[key] = contact;
+      } else {
+        final existing = groupedMap[key]!;
+        final existingTime = existing.timestamp ?? '';
+        final currentTime = contact.timestamp ?? '';
+        if (currentTime.compareTo(existingTime) > 0) {
+          groupedMap[key] = contact;
+        }
+      }
+    }
+
+    // 3. Sort grouped contacts by latest call timestamp descending
+    final groupedList = groupedMap.values.toList();
+    groupedList.sort((a, b) {
+      final timeA = a.timestamp ?? '';
+      final timeB = b.timestamp ?? '';
+      return timeB.compareTo(timeA);
+    });
+
+    _filtered = groupedList;
   }
 
   void _load() async {
@@ -61,7 +105,44 @@ class _RecentScreenState extends State<RecentScreen> {
     List<DirectoryContact> history = [];
 
     try {
-      final status = await Permission.phone.request();
+      var status = await Permission.phone.status;
+      if (!status.isGranted) {
+        if (mounted) {
+          final bool? proceed = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: const [
+                  Icon(Icons.history, color: Color(0xFF4C5B8F)),
+                  SizedBox(width: 8),
+                  Text('Call Log Access', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: const Text(
+                'Fone Book collects and displays call log history (incoming, outgoing, missed calls) to help you view recent phone activity and manage calls within your directory.',
+                style: TextStyle(fontFamily: 'Poppins', fontSize: 13),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Not Now', style: TextStyle(color: Colors.grey, fontFamily: 'Poppins')),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4C5B8F), foregroundColor: Colors.white),
+                  child: const Text('Allow', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+          if (proceed == true) {
+            status = await Permission.phone.request();
+          }
+        }
+      }
+
       if (status.isGranted) {
         final Iterable<CallLogEntry> entries = await CallLog.get();
         final DateFormat sdf = DateFormat('yyyy-MM-dd HH:mm:ss');
@@ -185,9 +266,9 @@ class _RecentScreenState extends State<RecentScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Recent',
+              title: 'Calls',
               showSearch: true,
-              searchHint: 'Search Recent',
+              searchHint: 'Search Calls',
               onSearch: (q) {
                 setState(() {
                   _searchQuery = q;
@@ -271,7 +352,7 @@ class _RecentScreenState extends State<RecentScreen> {
                       },
                       onDismissed: (direction) async {
                         setState(() {
-                          _list.removeWhere((e) => e.phone == contact.phone && e.timestamp == contact.timestamp);
+                          _list.removeWhere((e) => _getContactGroupKey(e) == _getContactGroupKey(contact));
                           _applyFilters();
                         });
                         await widget.store.removeFromHistory(contact);

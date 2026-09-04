@@ -58,8 +58,20 @@ class _AppShellState extends State<AppShell> {
     await SystemNavigator.pop();
   }
 
+  Color _getSelectedColor(int index) {
+    if (index == 1) return const Color(0xFFD7A007); // Search: Warm Gold
+    return const Color(0xFF4C5B8F); // Calls & Contacts: Primary Slate Navy
+  }
+
+  Color _getPillColor(int index) {
+    if (index == 1) return const Color(0xFFFFF8E1); // Warm Gold tint
+    return const Color(0xFFEEF2FF); // Soft Navy/Blue tint
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedColor = _getSelectedColor(_index);
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -70,24 +82,30 @@ class _AppShellState extends State<AppShell> {
         body: IndexedStack(
           index: _index,
           children: [
-            _buildNavigator(0, MyContactsScreen(api: api, session: _session)),
+            _buildNavigator(0, RecentScreen(api: api, store: store, session: _session)),
             _buildNavigator(1, HomeScreen(
               api: api,
               store: store,
               session: _session,
               onSearchModeChanged: (searching) {},
             )),
-            _buildNavigator(2, RecentScreen(api: api, store: store, session: _session)),
+            _buildNavigator(2, MyContactsScreen(api: api, session: _session)),
           ],
         ),
         bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF212529),
-            border: Border(top: BorderSide(color: Color(0xFF343A40), width: 0.8)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 10,
+                offset: const Offset(0, -3),
+              ),
+            ],
           ),
           child: Theme(
             data: Theme.of(context).copyWith(
-              canvasColor: const Color(0xFF212529),
+              canvasColor: Colors.white,
               splashColor: Colors.transparent,
               highlightColor: Colors.transparent,
             ),
@@ -100,58 +118,58 @@ class _AppShellState extends State<AppShell> {
                   setState(() => _index = i);
                 }
               },
-              backgroundColor: const Color(0xFF212529),
-              selectedItemColor: const Color(0xFFF6D207),
-              unselectedItemColor: const Color(0xFFA0A0A0),
-              selectedLabelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600, fontSize: 12),
+              backgroundColor: Colors.white,
+              selectedItemColor: selectedColor,
+              unselectedItemColor: const Color(0xFF757575),
+              selectedLabelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 12),
               unselectedLabelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500, fontSize: 12),
               type: BottomNavigationBarType.fixed,
               items: [
                 BottomNavigationBarItem(
                   icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                     decoration: BoxDecoration(
-                      color: _index == 0 ? const Color(0xFF343A40) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
+                      color: _index == 0 ? _getPillColor(0) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(
-                      Icons.contacts,
-                      size: 20,
-                      color: _index == 0 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
+                    child: Image.asset(
+                      'assets/images/history-icon.png',
+                      width: 22,
+                      height: 22,
+                      color: _index == 0 ? selectedColor : const Color(0xFF757575),
                     ),
                   ),
-                  label: 'Saved',
+                  label: 'Calls',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                     decoration: BoxDecoration(
-                      color: _index == 1 ? const Color(0xFF343A40) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
+                      color: _index == 1 ? _getPillColor(1) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
                       Icons.travel_explore,
                       size: 22,
-                      color: _index == 1 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
+                      color: _index == 1 ? selectedColor : const Color(0xFF757575),
                     ),
                   ),
                   label: 'Search',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                     decoration: BoxDecoration(
-                      color: _index == 2 ? const Color(0xFF343A40) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
+                      color: _index == 2 ? _getPillColor(2) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Image.asset(
-                      'assets/images/history-icon.png',
-                      width: 22,
-                      height: 22,
-                      color: _index == 2 ? const Color(0xFFF6D207) : const Color(0xFFA0A0A0),
+                    child: Icon(
+                      Icons.contacts,
+                      size: 20,
+                      color: _index == 2 ? selectedColor : const Color(0xFF757575),
                     ),
                   ),
-                  label: 'History',
+                  label: 'Contacts',
                 ),
               ],
             ),

@@ -98,7 +98,45 @@ class _HomeScreenState extends State<HomeScreen> {
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        if (mounted) {
+          final bool? proceed = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: const [
+                  Icon(Icons.location_on, color: Color(0xFF4C5B8F)),
+                  SizedBox(width: 8),
+                  Text('Location Access', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: const Text(
+                'Fone Book collects location data while using the app to show nearby contacts, business listings, and calculate distances to services.',
+                style: TextStyle(fontFamily: 'Poppins', fontSize: 13),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Not Now', style: TextStyle(color: Colors.grey, fontFamily: 'Poppins')),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4C5B8F), foregroundColor: Colors.white),
+                  child: const Text('Allow', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+          if (proceed == true) {
+            permission = await Geolocator.requestPermission();
+          } else {
+            _fallbackLocationFromSession();
+            return;
+          }
+        } else {
+          permission = await Geolocator.requestPermission();
+        }
       }
 
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {

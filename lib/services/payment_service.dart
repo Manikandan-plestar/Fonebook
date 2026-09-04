@@ -44,7 +44,7 @@ class PaymentService {
     if (kIsWeb) return false;
     isAvailable = await _iap.isAvailable();
     if (!isAvailable) {
-      debugPrint("Google Play Billing not available on this device.");
+      debugPrint("In-App Billing not available on this device.");
       return false;
     }
 
@@ -56,7 +56,7 @@ class PaymentService {
     }
     
     if (resp.notFoundIDs.isNotEmpty) {
-      debugPrint("Warning: Some IDs were not found in Play Console: ${resp.notFoundIDs}");
+      debugPrint("Warning: Some IDs were not found in App Store / Play Console: ${resp.notFoundIDs}");
     }
 
     products = resp.productDetails;
