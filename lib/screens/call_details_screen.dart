@@ -54,7 +54,8 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
   void initState() {
     super.initState();
     final initialService = widget.contact.service.trim();
-    if (initialService.isNotEmpty &&
+    if (widget.contact.category != 'my_contact' &&
+        initialService.isNotEmpty &&
         initialService.toLowerCase() != 'outgoing call' &&
         initialService.toLowerCase() != 'null') {
       _profession = initialService;
@@ -354,8 +355,34 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  if (widget.contact.category == 'my_contact') ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF4C5B8F).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(Icons.person, size: 12, color: Color(0xFF4C5B8F)),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'My Contact',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF4C5B8F),
+                                              fontFamily: 'Poppins',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   if (_profession.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
+                                    const SizedBox(height: 6),
                                     Text(
                                       _profession,
                                       style: const TextStyle(
@@ -368,7 +395,7 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 6),
                                   Text(
                                     displayPhone,
                                     style: const TextStyle(

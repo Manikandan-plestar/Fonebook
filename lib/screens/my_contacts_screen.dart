@@ -1873,9 +1873,9 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     final contact = DirectoryContact(
       id: item.id?.toString(),
       name: item.name.isNotEmpty ? item.name : item.phone,
-      service: item.title.isNotEmpty ? item.title : 'Outgoing Call',
+      service: '',
       phone: item.phone,
-      category: item.category,
+      category: 'my_contact',
     );
 
     SessionStore().addToHistory(contact);

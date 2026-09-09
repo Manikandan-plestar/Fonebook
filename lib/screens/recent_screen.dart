@@ -6,6 +6,7 @@ import '../models/contact.dart';
 import '../widgets/contact_card.dart';
 import '../widgets/app_header.dart';
 import 'call_details_screen.dart';
+import 'my_contacts_screen.dart';
 
 class RecentScreen extends StatefulWidget {
   final ApiClient api;
@@ -127,6 +128,30 @@ class _RecentScreenState extends State<RecentScreen> {
     List<DirectoryContact> history = [];
     bool backendSuccess = false;
 
+    // Load saved contacts to match against phonebook/saved contacts
+    final Map<String, MyContactItem> savedContactsMap = {};
+    try {
+      final res = await widget.api.post('get_my_contacts', {
+        'email': effectiveUserId,
+        'owner_email': effectiveUserId,
+      });
+      if (res is List) {
+        for (final e in res) {
+          if (e is Map) {
+            final cat = e['category']?.toString().toLowerCase() ?? '';
+            if (cat == 'app_profile') continue;
+            final item = MyContactItem.fromJson(Map<String, dynamic>.from(e));
+            final norm = _normalizePhone(item.phone);
+            if (norm.isNotEmpty) {
+              savedContactsMap[norm] = item;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[RecentScreen] Error fetching my_contacts: $e');
+    }
+
     try {
       final backendLogs = await widget.api.getCallHistoryFromBackend(userId: effectiveUserId);
       debugPrint('[RecentScreen] Loaded ${backendLogs.length} calls for $effectiveUserId');
@@ -134,21 +159,45 @@ class _RecentScreenState extends State<RecentScreen> {
       if (backendLogs.isNotEmpty) {
         for (final raw in backendLogs) {
           if (raw is Map) {
-            final name = (raw['name'] ?? raw['recipient_name'] ?? 'Unknown').toString();
+            final rawName = (raw['name'] ?? raw['recipient_name'] ?? '').toString();
             final phone = (raw['phone_number'] ?? raw['phone'] ?? '').toString();
             final rawService = (raw['service'] ?? '').toString();
-            final service = (rawService.isNotEmpty &&
-                rawService.toLowerCase() != 'outgoing call' &&
-                rawService.toLowerCase() != 'null')
-                ? rawService
-                : '';
             final time = (raw['call_time'] ?? raw['created_at'] ?? '').toString();
+
+            final norm = _normalizePhone(phone);
+            final savedContact = savedContactsMap[norm];
+            final isSaved = savedContact != null;
+
+            final String name;
+            final String service;
+            final String category;
+
+            if (isSaved) {
+              // Saved Contact / Contacts Screen Log:
+              // Override WhatsApp business name -> show actual saved contact name or phone fallback
+              name = savedContact.name.trim().isNotEmpty
+                  ? savedContact.name.trim()
+                  : (rawName.isNotEmpty && rawName != 'Unknown' ? rawName : phone);
+              service = ''; // Suppress WhatsApp business name / service
+              category = 'my_contact';
+            } else {
+              // Home Screen / Directory Log:
+              // Keep completely unchanged
+              name = rawName.isNotEmpty ? rawName : (phone.isNotEmpty ? phone : 'Unknown');
+              service = (rawService.isNotEmpty &&
+                  rawService.toLowerCase() != 'outgoing call' &&
+                  rawService.toLowerCase() != 'null')
+                  ? rawService
+                  : '';
+              category = '';
+            }
 
             if (phone.isNotEmpty) {
               history.add(DirectoryContact(
                 name: name,
                 phone: phone,
                 service: service,
+                category: category,
                 timestamp: time,
               ));
             }
@@ -160,7 +209,29 @@ class _RecentScreenState extends State<RecentScreen> {
     }
 
     if (!backendSuccess) {
-      history = await widget.store.getHistory();
+      final localHistory = await widget.store.getHistory();
+      for (final c in localHistory) {
+        final norm = _normalizePhone(c.phone);
+        final savedContact = savedContactsMap[norm];
+        final isSaved = savedContact != null || c.category == 'my_contact';
+
+        if (isSaved) {
+          final savedName = savedContact?.name.trim() ?? '';
+          final name = savedName.isNotEmpty ? savedName : (c.name.isNotEmpty ? c.name : c.phone);
+          history.add(DirectoryContact(
+            id: c.id,
+            name: name,
+            phone: c.phone,
+            service: '',
+            category: 'my_contact',
+            timestamp: c.timestamp,
+            image: c.image,
+            verified: c.verified,
+          ));
+        } else {
+          history.add(c);
+        }
+      }
     }
 
     if (mounted) {

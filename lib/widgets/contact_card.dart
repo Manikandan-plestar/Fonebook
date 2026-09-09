@@ -421,70 +421,46 @@ class ContactCard extends StatelessWidget {
                           padding: const EdgeInsets.only(left: 4),
                           child: Image.asset('assets/images/verified.png', width: 15, height: 15),
                         ),
+                      if (isMyContact)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4C5B8F).withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.person, size: 12, color: Color(0xFF4C5B8F)),
+                          ),
+                        ),
                     ],
                   ),
 
-                  if (isMyContact) ...[
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4C5B8F).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.person, size: 10, color: Color(0xFF4C5B8F)),
-                          SizedBox(width: 3),
-                          Text(
-                            'My Contact',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF4C5B8F),
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
                     ),
-                  ] else ...[
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
-                      ),
-                    ],
-                    if (!showTime && contact.location1 != null && contact.location1!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF212529)),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              contact.location1!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12.5, color: Color(0xFF212529), fontWeight: FontWeight.w600, fontFamily: 'Poppins'),
-                            ),
+                  ],
+                  if (!isMyContact && !showTime && contact.location1 != null && contact.location1!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF212529)),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            contact.location1!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, color: Color(0xFF212529), fontWeight: FontWeight.w600, fontFamily: 'Poppins'),
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ],
                 ],
               ),
