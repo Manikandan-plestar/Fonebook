@@ -96,7 +96,7 @@ class _HeaderMenuState extends State<HeaderMenu> {
             }
 
             String mode = '';
-            if (v == 'Profile' || v == 'Business') mode = 'profile';
+            if (v == 'Profile' || v == 'Business' || v == 'Directory') mode = 'profile';
             else if (v == 'Keywords') mode = 'keywords';
             else if (v == 'Verification') mode = 'verification';
             else if (v == 'Promote') mode = 'promote';
@@ -114,7 +114,7 @@ class _HeaderMenuState extends State<HeaderMenu> {
           },
           itemBuilder: (c) => [
             const PopupMenuItem(value: 'My Account', child: Text('My Account')),
-            const PopupMenuItem(value: 'Business', child: Text('Business')),
+            const PopupMenuItem(value: 'Directory', child: Text('Directory')),
             const PopupMenuItem(value: 'Keywords', child: Text('Keywords')),
             const PopupMenuItem(value: 'Promote', child: Text('Promote')),
             const PopupMenuItem(value: 'Favourites', child: Text('Favourites')),

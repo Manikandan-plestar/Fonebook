@@ -89,7 +89,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
 
   String get _title {
     switch (widget.mode) {
-      case 'profile': return 'Business';
+      case 'profile': return 'Directory';
       case 'keywords': return 'Keywords';
       case 'verification': return 'Verification';
       case 'promote': return 'Promote';
@@ -154,12 +154,12 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                               Icon(Icons.business_center_outlined, size: 54, color: Colors.grey.shade400),
                               const SizedBox(height: 12),
                               Text(
-                                'No Business profile added yet',
+                                'No Directory profile added yet',
                                 style: const TextStyle(fontFamily: 'Poppins', fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF212529)),
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Add your first Business profile to manage ${_title.toLowerCase()}',
+                                'Add your first Directory profile to manage ${_title.toLowerCase()}',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey.shade600),
                               ),
@@ -170,7 +170,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                                 child: ElevatedButton.icon(
                                   onPressed: _addContact,
                                   icon: const Icon(Icons.add, color: Colors.white),
-                                  label: const Text('Add Business Profile', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Colors.white)),
+                                  label: const Text('Add Directory Profile', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Colors.white)),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF6C757D),
                                     elevation: 0,

@@ -59,8 +59,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   Color _getSelectedColor(int index) {
-    if (index == 1) return const Color(0xFFD7A007); // Search: Warm Gold
-    return const Color(0xFF4C5B8F); // Calls & Contacts: Primary Slate Navy
+    if (index == 1) return const Color(0xFFD7A007); // Directory: Warm Gold
+    return const Color(0xFF4C5B8F); // Recents & Contacts: Primary Slate Navy
   }
 
   Color _getPillColor(int index) {
@@ -139,7 +139,7 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 0 ? selectedColor : const Color(0xFF757575),
                     ),
                   ),
-                  label: 'Calls',
+                  label: 'Recents',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
@@ -154,7 +154,7 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 1 ? selectedColor : const Color(0xFF757575),
                     ),
                   ),
-                  label: 'Search',
+                  label: 'Directory',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(

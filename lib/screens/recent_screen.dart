@@ -345,9 +345,9 @@ class _RecentScreenState extends State<RecentScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: 'Calls',
+              title: 'Recents',
               showSearch: true,
-              searchHint: 'Search Calls',
+              searchHint: 'Search Recents',
               onSearch: (q) {
                 setState(() {
                   _searchQuery = q;
@@ -364,7 +364,7 @@ class _RecentScreenState extends State<RecentScreen> {
               const Expanded(
                 child: Center(
                   child: Text(
-                    'No Calls',
+                    'No Recents',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.bold,
