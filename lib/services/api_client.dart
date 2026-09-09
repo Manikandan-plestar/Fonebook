@@ -108,16 +108,38 @@ class ApiClient {
     required String userId,
   }) async {
     try {
+      final List<String> expandedIds = [];
+      if (callIds != null) {
+        final Set<String> uniqueIds = {};
+        for (final id in callIds) {
+          if (id.trim().isEmpty) continue;
+          uniqueIds.add(id.trim());
+          uniqueIds.add(id.replaceAll(' ', ''));
+          final digits = id.replaceAll(RegExp(r'[^0-9]'), '');
+          if (digits.isNotEmpty) {
+            uniqueIds.add(digits);
+            if (digits.length >= 10) {
+              final last10 = digits.substring(digits.length - 10);
+              uniqueIds.add(last10);
+              uniqueIds.add('+91$last10');
+              uniqueIds.add('+91 $last10');
+            }
+          }
+        }
+        expandedIds.addAll(uniqueIds);
+      }
+
       final query = <String, String?>{
         'user_id': userId,
         'owner_email': userId,
         if (clearAll) 'clear_all': 'true',
+        if (expandedIds.isNotEmpty) 'call_ids': expandedIds.join(','),
       };
       final payload = <String, dynamic>{
         'user_id': userId,
         'owner_email': userId,
         'clear_all': clearAll,
-        if (callIds != null) 'call_ids': callIds,
+        if (expandedIds.isNotEmpty) 'call_ids': expandedIds,
       };
       return await delete('api/user_calls', payload, query);
     } catch (e) {

@@ -299,7 +299,7 @@ class _RecentScreenState extends State<RecentScreen> {
     }
     await widget.api.deleteCallsFromBackend(
       userId: effectiveUserId,
-      callIds: targets.map((t) => t.phone).toList(),
+      callIds: targets.expand((t) => [t.phone, if (t.id != null) t.id!]).toList(),
     );
   }
 
@@ -504,14 +504,15 @@ class _RecentScreenState extends State<RecentScreen> {
                           ) ?? false;
                         },
                         onDismissed: (direction) async {
+                          final effectiveUserId = await _getEffectiveUserId();
                           setState(() {
                             _list.removeWhere((e) => _getContactGroupKey(e) == key);
                             _applyFilters();
                           });
                           await widget.store.removeFromHistory(contact);
                           await widget.api.deleteCallsFromBackend(
-                            userId: _currentUserId,
-                            callIds: [contact.phone],
+                            userId: effectiveUserId,
+                            callIds: [contact.phone, if (contact.id != null) contact.id!],
                           );
                         },
                         child: GestureDetector(
