@@ -1987,3 +1987,202 @@ app.all('/get_my_contacts', (req, res) => {
         res.status(200).json(results);
     });
 });
+
+// --- SINGLE USER_CALLS TABLE & API ENDPOINTS ---
+
+const userCallsCache = {};
+
+function ensureUserCallsTable(callback) {
+    const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS user_calls (
+            user_id VARCHAR(191) PRIMARY KEY,
+            calls LONGTEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `;
+    if (typeof db !== 'undefined' && db && db.query) {
+        db.query(createTableQuery, (err) => {
+            if (err) console.error("[USER_CALLS_DB] Error creating user_calls table:", err);
+            if (callback) callback(err);
+        });
+    } else if (callback) {
+        callback(null);
+    }
+}
+
+ensureUserCallsTable();
+
+function extractUserId(req) {
+    return (
+        (req.body && (req.body.user_id || req.body.owner_email || req.body.email)) ||
+        (req.query && (req.query.user_id || req.query.owner_email || req.query.email)) ||
+        req.headers['user-id'] ||
+        req.headers['x-user-id'] ||
+        'guest@fonebook.com'
+    ).toString().trim().toLowerCase();
+}
+
+function getUserCallsData(userId, callback) {
+    ensureUserCallsTable(() => {
+        if (typeof db !== 'undefined' && db && db.query) {
+            db.query("SELECT calls FROM user_calls WHERE user_id = ?", [userId], (err, results) => {
+                if (err) {
+                    console.error("[USER_CALLS_DB] Error SELECT calls:", err);
+                    return callback(err, null);
+                }
+                if (results && results.length > 0 && results[0].calls) {
+                    try {
+                        const raw = results[0].calls;
+                        let parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+                        return callback(null, Array.isArray(parsed) ? parsed : []);
+                    } catch (parseErr) {
+                        console.error("[USER_CALLS_DB] JSON parse error:", parseErr);
+                        return callback(null, []);
+                    }
+                } else {
+                    return callback(null, userCallsCache[userId] || []);
+                }
+            });
+        } else {
+            return callback(null, userCallsCache[userId] || []);
+        }
+    });
+}
+
+function saveUserCallsData(userId, callsArray, callback) {
+    userCallsCache[userId] = callsArray;
+    const jsonStr = JSON.stringify(callsArray);
+
+    ensureUserCallsTable(() => {
+        if (typeof db !== 'undefined' && db && db.query) {
+            const query = `
+                INSERT INTO user_calls (user_id, calls, created_at, updated_at)
+                VALUES (?, ?, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE calls = ?, updated_at = NOW()
+            `;
+            db.query(query, [userId, jsonStr, jsonStr], (err) => {
+                if (err) console.error("[USER_CALLS_DB] Error saving user_calls:", err);
+                if (callback) callback(err);
+            });
+        } else if (callback) {
+            callback(null);
+        }
+    });
+}
+
+// POST /api/user_calls - Store clicked contact name, number, time in logged-in user array
+app.post(['/api/user_calls', '/user_calls', '/api/users_calls', '/users_calls'], (req, res) => {
+    try {
+        const userId = extractUserId(req);
+        const name = (req.body.name || req.body.recipient_name || 'Unknown').toString().trim();
+        const phoneNumber = (req.body.phone_number || req.body.phone || '').toString().trim();
+        const service = (req.body.service || '').toString().trim();
+        const callTime = req.body.call_time || new Date().toISOString();
+
+        if (!phoneNumber) {
+            return res.status(400).json({ success: false, message: 'phone_number is required.' });
+        }
+
+        const newCallObject = {
+            id: uuidv4(),
+            name: name,
+            phone_number: phoneNumber,
+            service: service,
+            call_time: callTime
+        };
+
+        getUserCallsData(userId, (err, currentCalls) => {
+            if (err) {
+                console.error('[POST /api/user_calls] Error fetching calls:', err);
+                return res.status(500).json({ success: false, message: 'Database error' });
+            }
+
+            const updatedCalls = [newCallObject, ...currentCalls];
+            saveUserCallsData(userId, updatedCalls, (saveErr) => {
+                if (saveErr) {
+                    console.error('[POST /api/user_calls] Error saving call:', saveErr);
+                    return res.status(500).json({ success: false, message: 'Database save error' });
+                }
+                console.log(`[USER_CALLS] Saved call for '${userId}': ${name} (${phoneNumber})`);
+                return res.status(201).json({
+                    success: true,
+                    message: 'Call added successfully',
+                    data: newCallObject
+                });
+            });
+        });
+    } catch (error) {
+        console.error('[POST /api/user_calls] Exception:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Server error' });
+    }
+});
+
+// GET /api/user_calls - Get logged-in user's call history array
+app.get(['/api/user_calls', '/user_calls', '/api/users_calls', '/users_calls'], (req, res) => {
+    try {
+        const userId = extractUserId(req);
+        getUserCallsData(userId, (err, callsList) => {
+            if (err) {
+                console.error('[GET /api/user_calls] Error:', err);
+                return res.status(500).json({ success: false, message: 'Database error' });
+            }
+            const sortedCalls = [...callsList].sort((a, b) => new Date(b.call_time) - new Date(a.call_time));
+            console.log(`[USER_CALLS] Returning ${sortedCalls.length} call(s) for '${userId}'`);
+            return res.status(200).json({
+                success: true,
+                data: sortedCalls
+            });
+        });
+    } catch (error) {
+        console.error('[GET /api/user_calls] Exception:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Server error' });
+    }
+});
+
+// DELETE /api/user_calls - Delete single, multi-select, or clear all calls for user
+app.delete(['/api/user_calls', '/user_calls', '/api/users_calls', '/users_calls'], (req, res) => {
+    try {
+        const userId = extractUserId(req);
+        const clearAll = req.query.clear_all === 'true' || req.body.clear_all === true || req.body.clearAll === true;
+        const callIds = req.body.call_ids || req.body.callIds || (req.body.id ? [req.body.id] : []);
+
+        getUserCallsData(userId, (err, currentCalls) => {
+            if (err) {
+                return res.status(500).json({ success: false, message: 'Database error' });
+            }
+
+            let updatedCalls = [];
+            let deletedCount = 0;
+
+            if (clearAll) {
+                deletedCount = currentCalls.length;
+                updatedCalls = [];
+            } else if (Array.isArray(callIds) && callIds.length > 0) {
+                const idSet = new Set(callIds.map(id => id.toString()));
+                updatedCalls = currentCalls.filter(c => !idSet.has(c.id.toString()) && !idSet.has(c.phone_number));
+                deletedCount = currentCalls.length - updatedCalls.length;
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Specify call_ids array or clear_all=true parameter.'
+                });
+            }
+
+            saveUserCallsData(userId, updatedCalls, (saveErr) => {
+                if (saveErr) {
+                    return res.status(500).json({ success: false, message: 'Database save error' });
+                }
+                return res.status(200).json({
+                    success: true,
+                    message: clearAll ? 'All call history cleared' : `Deleted ${deletedCount} call record(s)`,
+                    deleted_count: deletedCount
+                });
+            });
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message || 'Server error' });
+    }
+});
+

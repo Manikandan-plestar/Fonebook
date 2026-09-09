@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/contact.dart';
 import '../services/api_client.dart';
+import '../services/session_store.dart';
 
 class ContactCard extends StatelessWidget {
   final DirectoryContact contact;
@@ -19,6 +20,8 @@ class ContactCard extends StatelessWidget {
   final bool isFirstThree;
   final bool isMyContact;
   final bool isSponsored;
+  final bool isSelectionMode;
+  final bool isSelected;
 
   const ContactCard({
     super.key,
@@ -34,13 +37,19 @@ class ContactCard extends StatelessWidget {
     this.isFirstThree = false,
     this.isMyContact = false,
     this.isSponsored = false,
+    this.isSelectionMode = false,
+    this.isSelected = false,
   });
 
   String _getTimeAgo(String? timestamp) {
     if (timestamp == null || timestamp.isEmpty) return "";
     try {
-      final sdf = DateFormat('yyyy-MM-dd HH:mm:ss');
-      final date = sdf.parse(timestamp);
+      DateTime? date;
+      try {
+        date = DateTime.parse(timestamp);
+      } catch (_) {
+        date = DateFormat('yyyy-MM-dd HH:mm:ss').parse(timestamp);
+      }
       final diff = DateTime.now().difference(date);
 
       if (diff.inSeconds < 60) return "Just now";
@@ -102,6 +111,7 @@ class ContactCard extends StatelessWidget {
               InkWell(
                 onTap: () {
                   Navigator.pop(ctx);
+                  SessionStore().addToHistory(contact);
                   if (!isMyContact) {
                     unawaited(ApiClient().post('savecallcount', {
                       'phone_no': contact.phone,
@@ -308,9 +318,23 @@ class ContactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final bal = double.tryParse(contact.priorityBalance) ?? 0.0;
     final isSponsoredCard = !isMyContact && (isSponsored || (contact.priority == '0' && bal > 0));
-    
     final timeAgo = showTime ? _getTimeAgo(contact.timestamp) : "";
-    final subtitle = showTime && timeAgo.isNotEmpty ? "${contact.service} • $timeAgo" : contact.service;
+    final hasValidService = contact.service.isNotEmpty &&
+        contact.service.toLowerCase() != 'outgoing call' &&
+        contact.service.toLowerCase() != 'null';
+
+    String subtitle = "";
+    if (showTime) {
+      if (hasValidService && timeAgo.isNotEmpty) {
+        subtitle = "${contact.service} • $timeAgo";
+      } else if (hasValidService) {
+        subtitle = contact.service;
+      } else {
+        subtitle = timeAgo;
+      }
+    } else {
+      subtitle = hasValidService ? contact.service : "";
+    }
 
     return InkWell(
       onTap: onTap,
@@ -318,11 +342,11 @@ class ContactCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isSelected ? const Color(0xFFF0F4FF) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFFE9ECEF), 
-            width: 1.0,
+            color: isSelected ? const Color(0xFF4C5B8F) : const Color(0xFFE9ECEF), 
+            width: isSelected ? 1.5 : 1.0,
           ),
           boxShadow: [
             BoxShadow(
@@ -444,7 +468,7 @@ class ContactCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
                       ),
                     ],
-                    if (contact.location1 != null && contact.location1!.trim().isNotEmpty) ...[
+                    if (!showTime && contact.location1 != null && contact.location1!.trim().isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Row(
                         children: [
@@ -467,38 +491,49 @@ class ContactCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Favourite Star Icon (before Phone Icon)
-            if (showFavouriteIcon && (onFavouriteToggle != null || isFavourite)) ...[
-              InkWell(
-                onTap: () {
-                  if (isFavourite) {
-                    _showRemoveFavouriteDialog(context);
-                  } else {
-                    onFavouriteToggle?.call();
-                  }
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(
-                    isFavourite ? Icons.star : Icons.star_border,
-                    color: isFavourite ? const Color(0xFFF6D207) : Colors.grey,
-                    size: 22,
+            if (isSelectionMode)
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: isSelected ? const Color(0xFF4C5B8F) : Colors.grey.shade400,
+                  size: 24,
+                ),
+              )
+            else ...[
+              // Favourite Star Icon (before Phone Icon)
+              if (showFavouriteIcon && (onFavouriteToggle != null || isFavourite)) ...[
+                InkWell(
+                  onTap: () {
+                    if (isFavourite) {
+                      _showRemoveFavouriteDialog(context);
+                    } else {
+                      onFavouriteToggle?.call();
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      isFavourite ? Icons.star : Icons.star_border,
+                      color: isFavourite ? const Color(0xFFF6D207) : Colors.grey,
+                      size: 22,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-            ],
+                const SizedBox(width: 4),
+              ],
 
-            // Phone Icon (Opens Center Action Dialog for WhatsApp or Call)
-            InkWell(
-              onTap: () => _showContactActionDialog(context),
-              borderRadius: BorderRadius.circular(20),
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(Icons.phone, color: Colors.black, size: 22),
+              // Phone Icon (Opens Center Action Dialog for WhatsApp or Call)
+              InkWell(
+                onTap: () => _showContactActionDialog(context),
+                borderRadius: BorderRadius.circular(20),
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.phone, color: Colors.black, size: 22),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

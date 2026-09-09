@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_client.dart';
 import '../services/session_store.dart';
 import '../models/user_session.dart';
+import '../models/contact.dart';
 import '../widgets/app_header.dart';
 import '../services/dial_codes.dart';
 
@@ -1865,9 +1866,20 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     }
   }
 
-  void _callPhone(String phone) async {
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+  void _callContact(MyContactItem item) async {
+    final cleanPhone = item.phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (cleanPhone.isEmpty) return;
+
+    final contact = DirectoryContact(
+      id: item.id?.toString(),
+      name: item.name.isNotEmpty ? item.name : item.phone,
+      service: item.title.isNotEmpty ? item.title : 'Outgoing Call',
+      phone: item.phone,
+      category: item.category,
+    );
+
+    SessionStore().addToHistory(contact);
+
     final Uri url = Uri.parse('tel:$cleanPhone');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
@@ -2357,7 +2369,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
               )
             else
               InkWell(
-                onTap: () => _callPhone(item.phone),
+                onTap: () => _callContact(item),
                 borderRadius: BorderRadius.circular(20),
                 child: const Padding(
                   padding: EdgeInsets.all(8),

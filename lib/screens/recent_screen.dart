@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:call_log/call_log.dart';
-import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../services/api_client.dart';
 import '../services/session_store.dart';
 import '../models/user_session.dart';
@@ -14,7 +11,14 @@ class RecentScreen extends StatefulWidget {
   final ApiClient api;
   final SessionStore store;
   final UserSession session;
-  const RecentScreen({super.key, required this.api, required this.store, required this.session});
+
+  const RecentScreen({
+    super.key,
+    required this.api,
+    required this.store,
+    required this.session,
+  });
+
   @override
   State<RecentScreen> createState() => _RecentScreenState();
 }
@@ -25,20 +29,53 @@ class _RecentScreenState extends State<RecentScreen> {
   List<DirectoryContact> _favs = [];
   String _selectedFilter = 'All';
   String _searchQuery = '';
+  bool _loading = false;
+
+  // Multi-select Mode state
+  bool _isSelectionMode = false;
+  final Set<String> _selectedKeys = {};
 
   @override
   void initState() {
     super.initState();
+    widget.store.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_load);
+    super.dispose();
+  }
+
+  String get _currentUserId =>
+      (widget.session.email != null && widget.session.email!.trim().isNotEmpty)
+          ? widget.session.email!.trim()
+          : (widget.session.phone != null && widget.session.phone!.trim().isNotEmpty)
+              ? widget.session.phone!.trim()
+              : 'guest@fonebook.com';
+
+  Future<String> _getEffectiveUserId() async {
+    final session = await widget.store.read();
+    if (session.email != null && session.email!.trim().isNotEmpty) {
+      return session.email!.trim();
+    }
+    if (session.phone != null && session.phone!.trim().isNotEmpty) {
+      return session.phone!.trim();
+    }
+    if (widget.session.email != null && widget.session.email!.trim().isNotEmpty) {
+      return widget.session.email!.trim();
+    }
+    if (widget.session.phone != null && widget.session.phone!.trim().isNotEmpty) {
+      return widget.session.phone!.trim();
+    }
+    return 'guest@fonebook.com';
   }
 
   String _normalizePhone(String? phone) {
     if (phone == null || phone.isEmpty) return '';
     final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length >= 10) {
-      return digits.substring(digits.length - 10);
-    }
-    return digits;
+    return digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
   }
 
   String _getContactGroupKey(DirectoryContact c) {
@@ -50,30 +87,15 @@ class _RecentScreenState extends State<RecentScreen> {
   }
 
   void _applyFilters() {
-    // 1. Filter raw call entries by filter tab and search query
     final filteredRaw = _list.where((e) {
-      bool matchesTab = true;
-      final serviceLower = e.service.toLowerCase();
-      if (_selectedFilter == 'Missed') {
-        matchesTab = serviceLower.contains('missed') || serviceLower.contains('rejected');
-      } else if (_selectedFilter == 'Incoming') {
-        matchesTab = serviceLower.contains('incoming');
-      } else if (_selectedFilter == 'Outgoing') {
-        matchesTab = serviceLower.contains('outgoing') || serviceLower == 'call';
-      }
-
-      bool matchesSearch = true;
       if (_searchQuery.isNotEmpty) {
         final q = _searchQuery.toLowerCase();
-        matchesSearch = e.name.toLowerCase().contains(q) ||
-            e.phone.toLowerCase().contains(q) ||
-            e.service.toLowerCase().contains(q);
+        return e.name.toLowerCase().contains(q) ||
+            e.phone.toLowerCase().contains(q);
       }
-
-      return matchesTab && matchesSearch;
+      return true;
     }).toList();
 
-    // 2. Group entries by unique contact key, keeping the most recent call entry
     final Map<String, DirectoryContact> groupedMap = {};
     for (final contact in filteredRaw) {
       final key = _getContactGroupKey(contact);
@@ -89,7 +111,6 @@ class _RecentScreenState extends State<RecentScreen> {
       }
     }
 
-    // 3. Sort grouped contacts by latest call timestamp descending
     final groupedList = groupedMap.values.toList();
     groupedList.sort((a, b) {
       final timeA = a.timestamp ?? '';
@@ -100,162 +121,220 @@ class _RecentScreenState extends State<RecentScreen> {
     _filtered = groupedList;
   }
 
-  void _load() async {
+  Future<void> _load() async {
+    final effectiveUserId = await _getEffectiveUserId();
     final favs = await widget.store.getFavourites();
     List<DirectoryContact> history = [];
+    bool backendSuccess = false;
 
     try {
-      var status = await Permission.phone.status;
-      if (!status.isGranted) {
-        if (mounted) {
-          final bool? proceed = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                children: const [
-                  Icon(Icons.history, color: Color(0xFF4C5B8F)),
-                  SizedBox(width: 8),
-                  Text('Call Log Access', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
-              ),
-              content: const Text(
-                'Fone Book collects and displays call log history (incoming, outgoing, missed calls) to help you view recent phone activity and manage calls within your directory.',
-                style: TextStyle(fontFamily: 'Poppins', fontSize: 13),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Not Now', style: TextStyle(color: Colors.grey, fontFamily: 'Poppins')),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4C5B8F), foregroundColor: Colors.white),
-                  child: const Text('Allow', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          );
-          if (proceed == true) {
-            status = await Permission.phone.request();
+      final backendLogs = await widget.api.getCallHistoryFromBackend(userId: effectiveUserId);
+      debugPrint('[RecentScreen] Loaded ${backendLogs.length} calls for $effectiveUserId');
+      backendSuccess = true;
+      if (backendLogs.isNotEmpty) {
+        for (final raw in backendLogs) {
+          if (raw is Map) {
+            final name = (raw['name'] ?? raw['recipient_name'] ?? 'Unknown').toString();
+            final phone = (raw['phone_number'] ?? raw['phone'] ?? '').toString();
+            final rawService = (raw['service'] ?? '').toString();
+            final service = (rawService.isNotEmpty &&
+                rawService.toLowerCase() != 'outgoing call' &&
+                rawService.toLowerCase() != 'null')
+                ? rawService
+                : '';
+            final time = (raw['call_time'] ?? raw['created_at'] ?? '').toString();
+
+            if (phone.isNotEmpty) {
+              history.add(DirectoryContact(
+                name: name,
+                phone: phone,
+                service: service,
+                timestamp: time,
+              ));
+            }
           }
-        }
-      }
-
-      if (status.isGranted) {
-        final Iterable<CallLogEntry> entries = await CallLog.get();
-        final DateFormat sdf = DateFormat('yyyy-MM-dd HH:mm:ss');
-        for (final entry in entries) {
-          final String rawName = entry.name?.trim() ?? '';
-          final String phone = entry.formattedNumber ?? entry.number ?? '';
-          final String name = rawName.isNotEmpty ? rawName : (phone.isNotEmpty ? phone : 'Unknown');
-
-          String service = 'Call';
-          switch (entry.callType) {
-            case CallType.incoming:
-              service = 'Incoming Call';
-              break;
-            case CallType.outgoing:
-              service = 'Outgoing Call';
-              break;
-            case CallType.missed:
-              service = 'Missed Call';
-              break;
-            case CallType.rejected:
-              service = 'Rejected Call';
-              break;
-            case CallType.blocked:
-              service = 'Blocked Call';
-              break;
-            default:
-              service = 'Call';
-          }
-
-          final String timestamp = entry.timestamp != null
-              ? sdf.format(DateTime.fromMillisecondsSinceEpoch(entry.timestamp!))
-              : '';
-
-          history.add(DirectoryContact(
-            name: name,
-            service: service,
-            phone: phone,
-            timestamp: timestamp,
-          ));
         }
       }
     } catch (e) {
-      debugPrint('Error reading call log: $e');
+      debugPrint('[RecentScreen] Error fetching backend call logs: $e');
     }
 
-    if (history.isEmpty) {
+    if (!backendSuccess) {
       history = await widget.store.getHistory();
     }
 
+    if (mounted) {
+      setState(() {
+        _list = history;
+        _favs = favs;
+        _applyFilters();
+      });
+    }
+  }
+
+  void _toggleSelection(DirectoryContact contact) {
+    final key = _getContactGroupKey(contact);
     setState(() {
-      _list = history;
-      _favs = favs;
-      _applyFilters();
+      if (_selectedKeys.contains(key)) {
+        _selectedKeys.remove(key);
+        if (_selectedKeys.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedKeys.add(key);
+        _isSelectionMode = true;
+      }
     });
   }
 
-  Widget _buildFilterTabs() {
-    final tabs = ['All', 'Missed', 'Incoming', 'Outgoing'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: tabs.map((tab) {
-          final isSelected = _selectedFilter == tab;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: GestureDetector(
-                onTap: () {
+  Future<void> _deleteSelected() async {
+    if (_selectedKeys.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Selected Calls', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to delete ${_selectedKeys.length} selected call item(s)?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Delete', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) return;
+
+    final keysToRemove = Set<String>.from(_selectedKeys);
+    final targets = _list.where((e) => keysToRemove.contains(_getContactGroupKey(e))).toList();
+    final effectiveUserId = await _getEffectiveUserId();
+
+    // Optimistic UI update
+    setState(() {
+      _list.removeWhere((e) => keysToRemove.contains(_getContactGroupKey(e)));
+      _selectedKeys.clear();
+      _isSelectionMode = false;
+      _applyFilters();
+    });
+
+    // Remove from local cache & backend REST API
+    for (final target in targets) {
+      await widget.store.removeFromHistory(target);
+    }
+    await widget.api.deleteCallsFromBackend(
+      userId: effectiveUserId,
+      callIds: targets.map((t) => t.phone).toList(),
+    );
+  }
+
+  Future<void> _confirmClearAll() async {
+    if (_list.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Clear All Call History', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+        content: const Text('Are you sure you want to wipe your entire call history? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Clear All', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) return;
+
+    final effectiveUserId = await _getEffectiveUserId();
+
+    // Optimistic UI update
+    setState(() {
+      _list.clear();
+      _selectedKeys.clear();
+      _isSelectionMode = false;
+      _applyFilters();
+    });
+
+    // Clear backend users_calls array & local store
+    await widget.store.clearHistory();
+    await widget.api.deleteCallsFromBackend(userId: effectiveUserId, clearAll: true);
+  }
+
+  Widget _buildTopActionBar() {
+    if (_isSelectionMode) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF4C5B8F),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () {
                   setState(() {
-                    _selectedFilter = tab;
-                    _applyFilters();
+                    _isSelectionMode = false;
+                    _selectedKeys.clear();
                   });
                 },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF4C5B8F) : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected ? const Color(0xFF4C5B8F) : const Color(0xFFE0E0E0),
-                      width: 1.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: isSelected
-                            ? const Color(0xFF4C5B8F).withValues(alpha: 0.25)
-                            : Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      tab,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                        color: isSelected ? Colors.white : const Color(0xFF616161),
-                        fontFamily: 'Poppins',
-                      ),
-                    ),
-                  ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${_selectedKeys.length} selected',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontFamily: 'Poppins',
                 ),
               ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
+              const Spacer(),
+              IconButton(
+                icon: Icon(
+                  _selectedKeys.length == _filtered.length ? Icons.select_all : Icons.deselect,
+                  color: Colors.white,
+                ),
+                tooltip: 'Select All',
+                onPressed: () {
+                  setState(() {
+                    if (_selectedKeys.length == _filtered.length) {
+                      _selectedKeys.clear();
+                      _isSelectionMode = false;
+                    } else {
+                      _selectedKeys.clear();
+                      for (final c in _filtered) {
+                        _selectedKeys.add(_getContactGroupKey(c));
+                      }
+                    }
+                  });
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.white),
+                tooltip: 'Delete Selected',
+                onPressed: _deleteSelected,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   @override
@@ -280,15 +359,13 @@ class _RecentScreenState extends State<RecentScreen> {
               session: widget.session,
               onUpdate: _load,
             ),
-            _buildFilterTabs(),
+            _buildTopActionBar(),
             if (_filtered.isEmpty)
-              Expanded(
+              const Expanded(
                 child: Center(
                   child: Text(
-                    _list.isEmpty
-                        ? 'No Recent Contacts'
-                        : 'No $_selectedFilter Calls',
-                    style: const TextStyle(
+                    'No Calls',
+                    style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF6C757D),
@@ -299,89 +376,108 @@ class _RecentScreenState extends State<RecentScreen> {
               )
             else
               Expanded(
-                child: ListView.builder(
-                  itemCount: _filtered.length,
-                  itemBuilder: (c, i) {
-                    final contact = _filtered[i];
-                    final isFav = _favs.any((e) => e.phone == contact.phone);
-                    final isMyContact = contact.category == 'my_contact';
-                    
-                    return Dismissible(
-                      key: Key('recent_${contact.phone}_${contact.timestamp}_$i'),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.delete_forever, color: Colors.white, size: 24),
-                            SizedBox(width: 6),
-                            Text(
-                              'Delete',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      confirmDismiss: (direction) async {
-                        return await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            title: const Text('Delete Recent Call', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                            content: Text('Are you sure you want to remove ${contact.name} from your recent call history?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-                              ),
-                              ElevatedButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                child: const Text('Delete', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                child: RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(top: 8, bottom: 20),
+                    itemCount: _filtered.length,
+                    itemBuilder: (c, i) {
+                      final contact = _filtered[i];
+                      final key = _getContactGroupKey(contact);
+                      final isSelected = _selectedKeys.contains(key);
+                      final isFav = _favs.any((e) => e.phone == contact.phone);
+                      final isMyContact = contact.category == 'my_contact';
+
+                      return Dismissible(
+                        key: Key('recent_${contact.phone}_${contact.timestamp}_$i'),
+                        direction: _isSelectionMode ? DismissDirection.none : DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.delete_forever, color: Colors.white, size: 24),
+                              SizedBox(width: 6),
+                              Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
                               ),
                             ],
                           ),
-                        ) ?? false;
-                      },
-                      onDismissed: (direction) async {
-                        setState(() {
-                          _list.removeWhere((e) => _getContactGroupKey(e) == _getContactGroupKey(contact));
-                          _applyFilters();
-                        });
-                        await widget.store.removeFromHistory(contact);
-                      },
-                      child: ContactCard(
-                        contact: contact,
-                        isFavourite: isFav,
-                        showFavouriteIcon: false,
-                        isMyContact: isMyContact,
-                        showTime: true,
-                        onCall: () => widget.store.addToHistory(contact).then((_) => _load()),
-                        onFavouriteToggle: () async {
-                          await widget.store.toggleFavourite(contact);
-                          _load();
-                        },
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CallDetailsScreen(
-                                contact: contact,
-                                store: widget.store,
-                              ),
+                        ),
+                        confirmDismiss: (direction) async {
+                          return await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              title: const Text('Delete Recent Call', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                              content: Text('Are you sure you want to remove ${contact.name} from your recent call history?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                  child: const Text('Delete', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                ),
+                              ],
                             ),
-                          ).then((_) => _load());
+                          ) ?? false;
                         },
-                      ),
-                    );
-                  },
+                        onDismissed: (direction) async {
+                          setState(() {
+                            _list.removeWhere((e) => _getContactGroupKey(e) == key);
+                            _applyFilters();
+                          });
+                          await widget.store.removeFromHistory(contact);
+                          await widget.api.deleteCallsFromBackend(
+                            userId: _currentUserId,
+                            callIds: [contact.phone],
+                          );
+                        },
+                        child: GestureDetector(
+                          onLongPress: () => _toggleSelection(contact),
+                          child: ContactCard(
+                            contact: contact,
+                            isFavourite: isFav,
+                            showFavouriteIcon: false,
+                            isMyContact: isMyContact,
+                            showTime: true,
+                            isSelectionMode: _isSelectionMode,
+                            isSelected: isSelected,
+                            onCall: () => widget.store.addToHistory(contact).then((_) => _load()),
+                            onFavouriteToggle: () async {
+                              await widget.store.toggleFavourite(contact);
+                              _load();
+                            },
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _toggleSelection(contact);
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CallDetailsScreen(
+                                      contact: contact,
+                                      store: widget.store,
+                                    ),
+                                  ),
+                                ).then((_) => _load());
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
           ],
@@ -390,4 +486,3 @@ class _RecentScreenState extends State<RecentScreen> {
     );
   }
 }
-

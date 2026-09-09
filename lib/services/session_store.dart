@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_session.dart';
 import '../models/contact.dart';
+import 'api_client.dart';
 
 class SessionStore extends ChangeNotifier {
   static final SessionStore _instance = SessionStore._internal();
@@ -47,13 +49,29 @@ class SessionStore extends ChangeNotifier {
 
   Future<void> addToHistory(DirectoryContact c) async {
     final p = await _prefs;
+    final userEmail = p.getString('email') ?? p.getString('PHONE') ?? 'guest@fonebook.com';
+    final nowTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    final validService = (c.service.isNotEmpty &&
+        c.service.toLowerCase() != 'outgoing call' &&
+        c.service.toLowerCase() != 'null')
+        ? c.service
+        : '';
+
+    // 1. Post to backend single table user_calls (array format)
+    unawaited(ApiClient().addCallToBackend(
+      name: c.name.isNotEmpty ? c.name : c.phone,
+      phone: c.phone,
+      service: validService,
+      userId: userEmail,
+      callTime: nowTime,
+    ));
+
+    // 2. Cache locally in SharedPreferences for offline support
     final list = p.getStringList('history') ?? [];
-    
-    // Create a copy with current timestamp
     final contactWithTime = DirectoryContact(
       id: c.id,
       name: c.name,
-      service: c.service,
+      service: (c.service.isNotEmpty) ? c.service : 'Outgoing Call',
       phone: c.phone,
       location: c.location,
       location1: c.location1,
@@ -75,7 +93,6 @@ class SessionStore extends ChangeNotifier {
     );
 
     final json = jsonEncode(contactWithTime.toJson());
-    // Remove if already exists to move to top - matching by id if available, else phone
     list.removeWhere((item) {
       final parsed = DirectoryContact.fromJson(jsonDecode(item));
       if (c.id != null && parsed.id != null) {
@@ -99,12 +116,24 @@ class SessionStore extends ChangeNotifier {
     final p = await _prefs;
     final list = p.getStringList('history') ?? [];
     list.removeWhere((item) {
-      final parsed = DirectoryContact.fromJson(jsonDecode(item));
-      final sameId = c.id != null && parsed.id != null ? parsed.id == c.id : parsed.phone == c.phone;
-      final sameTime = c.timestamp == null || parsed.timestamp == c.timestamp;
-      return sameId && sameTime;
+      try {
+        final parsed = DirectoryContact.fromJson(jsonDecode(item));
+        final sameId = c.id != null && parsed.id != null && parsed.id == c.id;
+        final cleanCPhone = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+        final cleanPPhone = parsed.phone.replaceAll(RegExp(r'[^0-9]'), '');
+        final samePhone = cleanCPhone.isNotEmpty && cleanCPhone == cleanPPhone;
+        return sameId || samePhone;
+      } catch (_) {
+        return false;
+      }
     });
     await p.setStringList('history', list);
+    notifyListeners();
+  }
+
+  Future<void> clearHistory() async {
+    final p = await _prefs;
+    await p.remove('history');
     notifyListeners();
   }
 

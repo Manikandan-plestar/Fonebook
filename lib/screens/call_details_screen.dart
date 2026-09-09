@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:call_log/call_log.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/contact.dart';
 import '../services/session_store.dart';
+import '../services/api_client.dart';
 
 class CallDetailsScreen extends StatefulWidget {
   final DirectoryContact contact;
@@ -20,9 +19,11 @@ class CallDetailsScreen extends StatefulWidget {
   State<CallDetailsScreen> createState() => _CallDetailsScreenState();
 }
 
+enum AppCallType { incoming, outgoing, missed, rejected, blocked }
+
 class _CallDetailsItem {
   final String callTypeLabel;
-  final CallType callType;
+  final AppCallType callType;
   final DateTime timestamp;
   final int durationSeconds;
 
@@ -46,12 +47,18 @@ class _CallDetailsGroup {
 
 class _CallDetailsScreenState extends State<CallDetailsScreen> {
   bool _loading = true;
-  bool _permissionDenied = false;
   List<_CallDetailsGroup> _groupedLogs = [];
+  String _profession = '';
 
   @override
   void initState() {
     super.initState();
+    final initialService = widget.contact.service.trim();
+    if (initialService.isNotEmpty &&
+        initialService.toLowerCase() != 'outgoing call' &&
+        initialService.toLowerCase() != 'null') {
+      _profession = initialService;
+    }
     _loadCallHistory();
   }
 
@@ -59,15 +66,6 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     if (phone == null) return '';
     final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
     return digits.length >= 10 ? digits.substring(digits.length - 10) : digits;
-  }
-
-  String _formatDuration(int seconds) {
-    if (seconds <= 0) return '00:00';
-    final mins = seconds ~/ 60;
-    final secs = seconds % 60;
-    final minStr = mins.toString().padLeft(2, '0');
-    final secStr = secs.toString().padLeft(2, '0');
-    return '$minStr:$secStr';
   }
 
   String _getDateHeader(DateTime date) {
@@ -148,51 +146,62 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     final targetNorm = _normalize(widget.contact.phone);
     final List<_CallDetailsItem> allItems = [];
 
+    final session = await widget.store.read();
+    final effectiveUserId = (session.email != null && session.email!.trim().isNotEmpty)
+        ? session.email!.trim()
+        : (session.phone != null && session.phone!.trim().isNotEmpty)
+            ? session.phone!.trim()
+            : 'guest@fonebook.com';
+
     try {
-      final status = await Permission.phone.request();
-      if (status.isGranted) {
-        final Iterable<CallLogEntry> entries = await CallLog.get();
-        for (final entry in entries) {
-          final entryNorm = _normalize(entry.formattedNumber ?? entry.number ?? '');
-          if (targetNorm.isNotEmpty && entryNorm.isNotEmpty && targetNorm == entryNorm) {
-            String label = 'Call';
-            switch (entry.callType) {
-              case CallType.incoming:
-                label = 'Incoming Call';
-                break;
-              case CallType.outgoing:
-                label = 'Outgoing Call';
-                break;
-              case CallType.missed:
-                label = 'Missed Call';
-                break;
-              case CallType.rejected:
-                label = 'Rejected Call';
-                break;
-              case CallType.blocked:
-                label = 'Blocked Call';
-                break;
-              default:
-                label = 'Call';
+      final backendLogs = await ApiClient().getCallHistoryFromBackend(userId: effectiveUserId);
+      for (final raw in backendLogs) {
+        if (raw is Map) {
+          final phone = (raw['phone_number'] ?? raw['phone'] ?? '').toString();
+          final hNorm = _normalize(phone);
+          if (targetNorm.isNotEmpty && hNorm.isNotEmpty && targetNorm == hNorm) {
+            final s = (raw['service'] ?? '').toString().trim();
+            if (_profession.isEmpty &&
+                s.isNotEmpty &&
+                s.toLowerCase() != 'outgoing call' &&
+                s.toLowerCase() != 'null') {
+              _profession = s;
             }
-
-            final dt = entry.timestamp != null
-                ? DateTime.fromMillisecondsSinceEpoch(entry.timestamp!)
-                : DateTime.now();
-
+            final timeStr = (raw['call_time'] ?? raw['created_at'] ?? '').toString();
+            DateTime dt = DateTime.now();
+            if (timeStr.isNotEmpty) {
+              try {
+                dt = DateTime.parse(timeStr);
+              } catch (_) {
+                dt = (DateFormat('yyyy-MM-dd HH:mm:ss').tryParse(timeStr)) ?? DateTime.now();
+              }
+            }
             allItems.add(_CallDetailsItem(
-              callTypeLabel: label,
-              callType: entry.callType ?? CallType.outgoing,
+              callTypeLabel: 'Call',
+              callType: AppCallType.outgoing,
               timestamp: dt,
-              durationSeconds: entry.duration ?? 0,
+              durationSeconds: 0,
             ));
           }
         }
-      } else {
-        _permissionDenied = true;
       }
     } catch (e) {
-      debugPrint('Error reading call logs for details: $e');
+      debugPrint('[CallDetailsScreen] Error loading backend history: $e');
+    }
+
+    if (_profession.isEmpty) {
+      final favs = await widget.store.getFavourites();
+      for (final f in favs) {
+        if (_normalize(f.phone) == targetNorm) {
+          final s = f.service.trim();
+          if (s.isNotEmpty &&
+              s.toLowerCase() != 'outgoing call' &&
+              s.toLowerCase() != 'null') {
+            _profession = s;
+            break;
+          }
+        }
+      }
     }
 
     if (allItems.isEmpty) {
@@ -200,12 +209,24 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
       for (final h in localHistory) {
         final hNorm = _normalize(h.phone);
         if (targetNorm.isNotEmpty && hNorm.isNotEmpty && targetNorm == hNorm) {
-          final dt = (h.timestamp != null ? DateTime.tryParse(h.timestamp!) : null) ?? DateTime.now();
+          final s = h.service.trim();
+          if (_profession.isEmpty &&
+              s.isNotEmpty &&
+              s.toLowerCase() != 'outgoing call' &&
+              s.toLowerCase() != 'null') {
+            _profession = s;
+          }
+          DateTime dt = DateTime.now();
+          if (h.timestamp != null && h.timestamp!.isNotEmpty) {
+            try {
+              dt = DateTime.parse(h.timestamp!);
+            } catch (_) {
+              dt = (DateFormat('yyyy-MM-dd HH:mm:ss').tryParse(h.timestamp!)) ?? DateTime.now();
+            }
+          }
           allItems.add(_CallDetailsItem(
-            callTypeLabel: h.service.isNotEmpty ? h.service : 'Call',
-            callType: h.service.toLowerCase().contains('missed')
-                ? CallType.missed
-                : (h.service.toLowerCase().contains('incoming') ? CallType.incoming : CallType.outgoing),
+            callTypeLabel: 'Call',
+            callType: AppCallType.outgoing,
             timestamp: dt,
             durationSeconds: 0,
           ));
@@ -233,35 +254,31 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     }
   }
 
-  Widget _buildAvatar(String displayName, String? imagePath) {
-    final hasImg = imagePath != null && imagePath.trim().isNotEmpty && imagePath.trim().toLowerCase() != 'null';
-    if (hasImg) {
-      final String fullUrl = imagePath!.startsWith('http')
-          ? imagePath
-          : 'https://apps.plestarinc.com:3002/uploads/${imagePath.replaceAll(RegExp(r'^/uploads/'), '')}';
-      return CircleAvatar(
-        radius: 34,
-        backgroundColor: const Color(0xFFE8EAED),
-        backgroundImage: NetworkImage(fullUrl),
-      );
-    }
-
-    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
-    return CircleAvatar(
-      radius: 34,
-      backgroundColor: const Color(0xFF4C5B8F),
-      child: Text(
-        initial,
-        style: const TextStyle(fontSize: 26, color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+  Widget _buildAvatar(String name, String? imageUrl) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFF4C5B8F),
+      ),
+      child: ClipOval(
+        child: (imageUrl != null && imageUrl.isNotEmpty)
+            ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Image.asset('assets/images/user.png', fit: BoxFit.cover),
+              )
+            : Image.asset('assets/images/user.png', fit: BoxFit.cover),
       ),
     );
   }
 
-  Widget _buildCallTypeIcon(CallType type, String label) {
-    if (label.toLowerCase().contains('missed') || type == CallType.missed) {
-      return const Icon(Icons.close, color: Color(0xFFD93025), size: 20);
-    } else if (label.toLowerCase().contains('incoming') || type == CallType.incoming) {
-      return const Icon(Icons.south_west, color: Color(0xFF1E8E3E), size: 20);
+  Widget _buildCallTypeIcon(AppCallType type, String label) {
+    if (type == AppCallType.missed) {
+      return const Icon(Icons.call_missed, color: Color(0xFFD93025), size: 20);
+    } else if (label.toLowerCase().contains('incoming')) {
+      return const Icon(Icons.call_received, color: Color(0xFF1E8E3E), size: 20);
     } else if (label.toLowerCase().contains('rejected') || label.toLowerCase().contains('blocked')) {
       return const Icon(Icons.block, color: Color(0xFF757575), size: 20);
     } else {
@@ -281,23 +298,20 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
             ? const Center(child: CircularProgressIndicator(color: Color(0xFF4C5B8F)))
             : Column(
                 children: [
-                  // Top Header Bar matching Recent page style
                   Container(
                     height: 60,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: const BoxDecoration(
                       color: Color(0xFFF5F5F5),
                       border: Border(bottom: BorderSide(color: Color(0xFFD7D7D7), width: 1)),
                     ),
                     child: Row(
                       children: [
-                        Image.asset(
-                          'assets/images/phone_book_logo_round.png',
-                          width: 34,
-                          height: 34,
-                          fit: BoxFit.contain,
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Color(0xFF232323)),
+                          onPressed: () => Navigator.pop(context),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 4),
                         const Expanded(
                           child: Text(
                             'Call Details',
@@ -312,8 +326,6 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                       ],
                     ),
                   ),
-
-                  // Top User Info Card matching Call History card styling
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     child: Card(
@@ -342,6 +354,20 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  if (_profession.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _profession,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF4C5B8F),
+                                        fontFamily: 'Poppins',
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                   const SizedBox(height: 4),
                                   Text(
                                     displayPhone,
@@ -389,15 +415,13 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  _permissionDenied ? Icons.no_cell : Icons.history,
+                                  Icons.history,
                                   size: 48,
                                   color: Colors.grey.shade400,
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _permissionDenied
-                                      ? 'Call log permission required to view full call history'
-                                      : 'No previous call history found',
+                                  'No previous call history found',
                                   style: TextStyle(fontSize: 15, color: Colors.grey.shade600, fontFamily: 'Poppins'),
                                   textAlign: TextAlign.center,
                                 ),
@@ -433,8 +457,7 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                     children: List.generate(group.items.length, (itemIndex) {
                                       final item = group.items[itemIndex];
                                       final timeStr = DateFormat('hh:mm a').format(item.timestamp);
-                                      final isMissed = item.callTypeLabel.toLowerCase().contains('missed') || item.callType == CallType.missed;
-                                      final durationStr = isMissed ? 'Missed Call' : _formatDuration(item.durationSeconds);
+                                      final isMissed = item.callType == AppCallType.missed;
 
                                       return Column(
                                         children: [
@@ -454,19 +477,19 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                               child: _buildCallTypeIcon(item.callType, item.callTypeLabel),
                                             ),
                                             title: Text(
-                                              item.callTypeLabel,
-                                              style: TextStyle(
+                                              DateFormat('MMM d, yyyy').format(item.timestamp),
+                                              style: const TextStyle(
                                                 fontSize: 15,
                                                 fontWeight: FontWeight.w600,
-                                                color: isMissed ? const Color(0xFFD93025) : const Color(0xFF202124),
+                                                color: Color(0xFF202124),
                                                 fontFamily: 'Poppins',
                                               ),
                                             ),
                                             subtitle: Text(
-                                              '$timeStr • $durationStr',
-                                              style: TextStyle(
+                                              timeStr,
+                                              style: const TextStyle(
                                                 fontSize: 13,
-                                                color: isMissed ? const Color(0xFFD93025) : const Color(0xFF5F6368),
+                                                color: Color(0xFF5F6368),
                                                 fontFamily: 'Poppins',
                                               ),
                                             ),
