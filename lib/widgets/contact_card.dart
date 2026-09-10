@@ -371,7 +371,7 @@ class ContactCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF4A4A4A),
+                        color: Color(0xFF212529),
                         fontFamily: 'Poppins',
                       ),
                     ),
@@ -442,7 +442,7 @@ class ContactCard extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF212529), fontFamily: 'Poppins'),
                     ),
                   ],
                   if (!isMyContact && !showTime && contact.location1 != null && contact.location1!.trim().isNotEmpty) ...[

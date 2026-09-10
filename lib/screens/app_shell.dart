@@ -11,13 +11,13 @@ import 'profile_list_screen.dart';
 class AppShell extends StatefulWidget {
   final int initialIndex;
   final bool showProfileList;
-  const AppShell({super.key, this.initialIndex = 1, this.showProfileList = false});
+  const AppShell({super.key, this.initialIndex = 0, this.showProfileList = false});
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 1;
+  int _index = 0;
   final api = ApiClient();
   final store = SessionStore();
   UserSession _session = const UserSession();
@@ -50,8 +50,8 @@ class _AppShellState extends State<AppShell> {
       return;
     }
 
-    if (_index != 1) {
-      setState(() => _index = 1);
+    if (_index != 0) {
+      setState(() => _index = 0);
       return;
     }
 
@@ -59,12 +59,11 @@ class _AppShellState extends State<AppShell> {
   }
 
   Color _getSelectedColor(int index) {
-    if (index == 1) return const Color(0xFFD7A007); // Directory: Warm Gold
-    return const Color(0xFF4C5B8F); // Recents & Contacts: Primary Slate Navy
+    return const Color(0xFF4C5B8F); // Directory, Recent & Saved: Primary Slate Navy
   }
 
   Color _getPillColor(int index) {
-    if (index == 1) return const Color(0xFFFFF8E1); // Warm Gold tint
+    if (index == 0) return const Color(0xFFFFF8E1); // Warm Gold tint
     return const Color(0xFFEEF2FF); // Soft Navy/Blue tint
   }
 
@@ -82,13 +81,13 @@ class _AppShellState extends State<AppShell> {
         body: IndexedStack(
           index: _index,
           children: [
-            _buildNavigator(0, RecentScreen(api: api, store: store, session: _session)),
-            _buildNavigator(1, HomeScreen(
+            _buildNavigator(0, HomeScreen(
               api: api,
               store: store,
               session: _session,
               onSearchModeChanged: (searching) {},
             )),
+            _buildNavigator(1, RecentScreen(api: api, store: store, session: _session)),
             _buildNavigator(2, MyContactsScreen(api: api, session: _session)),
           ],
         ),
@@ -132,14 +131,13 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 0 ? _getPillColor(0) : Colors.transparent,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Image.asset(
-                      'assets/images/history-icon.png',
-                      width: 22,
-                      height: 22,
-                      color: _index == 0 ? selectedColor : const Color(0xFF757575),
+                    child: Icon(
+                      Icons.travel_explore,
+                      size: 22,
+                      color: _index == 0 ? const Color(0xFFD7A007) : const Color(0xFF757575),
                     ),
                   ),
-                  label: 'Recents',
+                  label: 'Directory',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
@@ -148,13 +146,14 @@ class _AppShellState extends State<AppShell> {
                       color: _index == 1 ? _getPillColor(1) : Colors.transparent,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(
-                      Icons.travel_explore,
-                      size: 22,
+                    child: Image.asset(
+                      'assets/images/history-icon.png',
+                      width: 22,
+                      height: 22,
                       color: _index == 1 ? selectedColor : const Color(0xFF757575),
                     ),
                   ),
-                  label: 'Directory',
+                  label: 'Recent',
                 ),
                 BottomNavigationBarItem(
                   icon: Container(
@@ -186,7 +185,7 @@ class _AppShellState extends State<AppShell> {
         final routes = <Route<dynamic>>[
           MaterialPageRoute(builder: (context) => rootPage),
         ];
-        if (index == 1 && widget.showProfileList) {
+        if (index == 0 && widget.showProfileList) {
           routes.add(
             MaterialPageRoute(
               builder: (context) => ProfileListScreen(

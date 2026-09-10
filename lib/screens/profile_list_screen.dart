@@ -358,7 +358,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                       p.service,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF212529), fontFamily: 'Poppins'),
                     ),
                   ],
                   if (p.location1 != null && p.location1!.trim().isNotEmpty) ...[

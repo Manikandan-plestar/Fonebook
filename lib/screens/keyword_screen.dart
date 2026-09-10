@@ -178,7 +178,7 @@ class _KeywordScreenState extends State<KeywordScreen> {
                                     widget.service,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 13, color: Color(0xFF6C757D), fontFamily: 'Poppins'),
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF212529), fontFamily: 'Poppins'),
                                   ),
                               ],
                             ),
