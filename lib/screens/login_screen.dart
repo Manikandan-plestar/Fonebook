@@ -204,7 +204,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 27),
@@ -232,8 +232,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   hintText: 'Email Address',
                   filled: true,
-                  fillColor: const Color(0xFFDFDFDF),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide.none),
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
                 ),
               ),
@@ -247,12 +248,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _sendOtp,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD7B41A),
-                      foregroundColor: const Color(0xFF272000),
+                      backgroundColor: const Color(0xFF4C5B8F),
+                      foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: _isLoading ? const CircularProgressIndicator() : const Text('Send otp', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Send otp', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   ),
                 ),
 
@@ -263,8 +264,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: InputDecoration(
                     hintText: 'Enter OTP',
                     filled: true,
-                    fillColor: const Color(0xFFDFDFDF),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide.none),
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
                   ),
                 ),
@@ -275,10 +277,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _verifyOtp,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD7B41A),
-                      foregroundColor: const Color(0xFF272000),
+                      backgroundColor: const Color(0xFF4C5B8F),
+                      foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     child: const Text('Verify otp', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   ),

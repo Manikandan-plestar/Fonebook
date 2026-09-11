@@ -73,7 +73,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget build(BuildContext context) {
     final isPaid = widget.type == 'paid';
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Column(
           children: [

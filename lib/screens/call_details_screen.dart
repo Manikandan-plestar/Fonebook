@@ -293,7 +293,7 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
     final displayPhone = widget.contact.phone;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: Color(0xFF4C5B8F)))

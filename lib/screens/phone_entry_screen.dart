@@ -69,7 +69,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Column(
           children: [
@@ -223,7 +223,9 @@ class _DialCodePickerDialogState extends State<_DialCodePickerDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -238,7 +240,7 @@ class _DialCodePickerDialogState extends State<_DialCodePickerDialog> {
                 hintText: 'Search country or code...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: const Color(0xFFF5F5F5),
+                fillColor: const Color(0xFFF1F3F4),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
               ),
             ),

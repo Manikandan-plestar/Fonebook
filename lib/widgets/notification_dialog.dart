@@ -100,7 +100,7 @@ class _NotificationDialogState extends State<NotificationDialog> {
         children: [
           Row(
             children: const [
-              Icon(Icons.notifications_outlined, color: Color(0xFFD7B41A), size: 26),
+              Icon(Icons.notifications_outlined, color: Color(0xFF4C5B8F), size: 26),
               SizedBox(width: 8),
               Text(
                 'Notifications',
@@ -125,7 +125,7 @@ class _NotificationDialogState extends State<NotificationDialog> {
         width: screenSize.width * 0.82,
         height: screenSize.height * 0.42,
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFFD7B41A)))
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF4C5B8F)))
             : _notifications.isEmpty
                 ? Center(
                     child: Column(
@@ -196,11 +196,11 @@ class _NotificationDialogState extends State<NotificationDialog> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFFFF8DF),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4C5B8F).withValues(alpha: 0.1),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.phone_android, color: Color(0xFFD7B41A), size: 22),
+                                child: const Icon(Icons.phone_android, color: Color(0xFF4C5B8F), size: 22),
                               ),
                               const SizedBox(width: 12),
                               Expanded(

@@ -37,7 +37,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: const Color(0xFFFDF8E1), // Light version of app background
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -49,7 +50,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 fontFamily: 'Poppins',
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF272000),
+                color: Color(0xFF212529),
               ),
             ),
             const SizedBox(height: 10),
@@ -75,7 +76,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
               const Text(
                 'No promotion packages found. Please check your connection or try again later.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontFamily: 'Poppins', color: Color(0xFF272000)),
+                style: TextStyle(fontFamily: 'Poppins', color: Color(0xFF212529)),
               )
             else
               Flexible(
@@ -95,7 +96,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
               child: const Text(
                 'Cancel',
                 style: TextStyle(
-                  color: Color(0xFF272000),
+                  color: Color(0xFF6C757D),
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
@@ -118,12 +119,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFF8F9FA),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFD7B41A).withOpacity(0.5)),
+          border: Border.all(color: const Color(0xFF4C5B8F).withValues(alpha: 0.25)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 5,
               offset: const Offset(0, 2),
             )
@@ -141,7 +142,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: Color(0xFF272000),
+                      color: Color(0xFF212529),
                     ),
                   ),
                   Text(
@@ -162,7 +163,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
-                color: Color(0xFFD7B41A),
+                color: Color(0xFF4C5B8F),
               ),
             ),
           ],

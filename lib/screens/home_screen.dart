@@ -1879,7 +1879,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Stack(
           children: [
@@ -2014,8 +2014,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 final contact = nearbyList[i];
                 final isFav = _favs.any((e) => e.phone == contact.phone);
                 final isMyContact = _isMyContactMatch(contact);
-                final isSponsored = !isMyContact &&
-                    ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
+                final isSponsored = (double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0';
 
                 return ContactCard(
                   contact: contact,
@@ -2067,8 +2066,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final contact = _results[i];
               final isFav = _favs.any((e) => e.phone == contact.phone);
               final isMyContact = _isMyContactMatch(contact);
-              final isSponsored = !isMyContact && 
-                                  ((double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0');
+              final isSponsored = (double.tryParse(contact.priorityBalance) ?? 0.0) > 0 || contact.priority == '0';
 
               return ContactCard(
                 contact: contact,
@@ -2110,6 +2108,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         },
         child: Card(
+          color: Colors.white,
+          surfaceTintColor: Colors.white,
           elevation: 3,
           shadowColor: Colors.black.withValues(alpha: 0.1),
           shape: RoundedRectangleBorder(

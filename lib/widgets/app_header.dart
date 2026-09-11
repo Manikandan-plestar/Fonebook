@@ -140,7 +140,7 @@ class _AppHeaderState extends State<AppHeader> {
         ),
         if (_latestNotification != null)
           Material(
-            color: const Color(0xFFFFF8DF),
+            color: const Color(0xFFE8EEF9),
             child: InkWell(
               onTap: () async {
                 await NotificationDialog.show(context);
@@ -149,12 +149,12 @@ class _AppHeaderState extends State<AppHeader> {
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFD7B41A), width: 1.2)),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: const Color(0xFF4C5B8F).withValues(alpha: 0.3), width: 1.2)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.notifications_active, color: Color(0xFFD7B41A), size: 20),
+                    const Icon(Icons.notifications_active, color: Color(0xFF4C5B8F), size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

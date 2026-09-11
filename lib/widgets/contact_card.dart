@@ -230,8 +230,8 @@ class ContactCard extends StatelessWidget {
       barrierColor: Colors.black.withValues(alpha: 0.5),
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (ctx, anim1, anim2) => AlertDialog(
-        backgroundColor: const Color(0xFFF0F2F5), // White with grey mix
-        surfaceTintColor: const Color(0xFFF0F2F5),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 8,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
@@ -317,7 +317,7 @@ class ContactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bal = double.tryParse(contact.priorityBalance) ?? 0.0;
-    final isSponsoredCard = !isMyContact && (isSponsored || (contact.priority == '0' && bal > 0));
+    final isSponsoredCard = isSponsored || contact.priority == '0' || bal > 0;
     final timeAgo = showTime ? _getTimeAgo(contact.timestamp) : "";
     final hasValidService = contact.service.isNotEmpty &&
         contact.service.toLowerCase() != 'outgoing call' &&

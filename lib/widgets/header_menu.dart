@@ -50,6 +50,10 @@ class _HeaderMenuState extends State<HeaderMenu> {
       mainAxisSize: MainAxisSize.min,
       children: [
         PopupMenuButton<String>(
+          color: Colors.white,
+          surfaceTintColor: Colors.white,
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           icon: Image.asset('assets/images/three_dots.png', width: 25, height: 30),
           onSelected: (v) async {
             if (v == 'Logout') {
@@ -140,6 +144,9 @@ class _HeaderMenuState extends State<HeaderMenu> {
     showMenu<String>(
       context: context,
       position: position,
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       items: [
         const PopupMenuItem(value: 'organic', child: Text('Organic Traffic')),
         const PopupMenuItem(value: 'paid', child: Text('Paid Traffic')),

@@ -1912,7 +1912,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Column(
           children: [

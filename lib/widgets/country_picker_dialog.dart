@@ -29,8 +29,9 @@ class _CountryPickerDialogState extends State<CountryPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFFF5F5F5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -39,7 +40,7 @@ class _CountryPickerDialogState extends State<CountryPickerDialog> {
           children: [
             Text(
               widget.title,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -47,8 +48,8 @@ class _CountryPickerDialogState extends State<CountryPickerDialog> {
               decoration: InputDecoration(
                 hintText: 'Search...',
                 filled: true,
-                fillColor: const Color(0xFFE6E6E6),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide.none),
+                fillColor: const Color(0xFFF1F3F4),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),

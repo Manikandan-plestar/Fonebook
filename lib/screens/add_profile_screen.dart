@@ -917,7 +917,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   Widget build(BuildContext context) {
     final isEdit = widget.phone != null;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Column(
           children: [

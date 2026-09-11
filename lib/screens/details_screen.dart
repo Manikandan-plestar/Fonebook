@@ -141,7 +141,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
     final show = c.showContact.toLowerCase();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Column(
           children: [

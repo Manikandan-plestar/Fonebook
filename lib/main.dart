@@ -39,12 +39,26 @@ class FonebookApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFD7B41A),
-          primary: const Color(0xFFD7B41A),
+          seedColor: const Color(0xFF4C5B8F),
+          primary: const Color(0xFF4C5B8F),
           secondary: const Color(0xFF5F6368),
           surface: Colors.white,
         ),
-        scaffoldBackgroundColor: Colors.white,
+        scaffoldBackgroundColor: const Color(0xFFF0F4F9),
+        cardColor: Colors.white,
+        cardTheme: const CardThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.white,
+        ),
+        dialogBackgroundColor: Colors.white,
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+        ),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.white,
+        ),
         fontFamily: 'sans-serif',
       ),
       home: home,

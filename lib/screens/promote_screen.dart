@@ -39,6 +39,12 @@ class _PromoteScreenState extends State<PromoteScreen> {
   @override
   void initState() {
     super.initState();
+    final initBal = double.tryParse(widget.contact.priorityBalance) ?? 0.0;
+    _balance = widget.contact.priorityBalance.isNotEmpty && initBal > 0 
+        ? widget.contact.priorityBalance 
+        : (widget.contact.priorityBalance.isNotEmpty ? widget.contact.priorityBalance : '0.00');
+    _isPromoting = widget.contact.priority == '0' || initBal > 0;
+
     _loadStatus();
     
     _purchaseSub = PaymentService().purchaseStream.listen((purchase) async {
@@ -57,7 +63,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
         final newBalStr = newBal.toStringAsFixed(2);
 
         await _api.post('savepriority', {
-          'id': widget.contact.id!,
+          'id': widget.contact.id ?? '',
           'priority_amount': newBalStr,
           'priority': '0',
         });
@@ -92,36 +98,57 @@ class _PromoteScreenState extends State<PromoteScreen> {
   }
 
   Future<void> _loadStatus() async {
-    final profileId = widget.contact.id;
-    if (profileId == null || profileId.isEmpty) {
-      debugPrint("PromoteScreen: No Business Profile ID available.");
-      return;
-    }
+    String? profileId = widget.contact.id;
 
     try {
-      final balRes = await _api.get('check-priority', {'id': profileId});
+      dynamic balRes;
+      if (profileId != null && profileId.isNotEmpty) {
+        balRes = await _api.get('check-priority', {'id': profileId});
+      }
       
-      String foundBal = '0.00';
-      if (balRes is List && balRes.isNotEmpty && balRes[0]['error'] == null) {
-        foundBal = balRes[0]['priority_balance']?.toString() ?? '0.00';
-        final data = balRes[0];
+      Map<String, dynamic>? data;
+      if (balRes is List && balRes.isNotEmpty && balRes[0] is Map && balRes[0]['error'] == null) {
+        data = Map<String, dynamic>.from(balRes[0]);
+      } else if (balRes is Map && balRes['error'] == null) {
+        if (balRes['data'] is List && (balRes['data'] as List).isNotEmpty) {
+          data = Map<String, dynamic>.from(balRes['data'][0]);
+        } else if (balRes['data'] is Map) {
+          data = Map<String, dynamic>.from(balRes['data']);
+        } else {
+          data = Map<String, dynamic>.from(balRes);
+        }
+      }
+
+      // If check-priority didn't yield data, load via check_search_type1
+      final email = widget.session.email;
+      if (data == null && email != null && email.isNotEmpty) {
+        final res = await _api.get('check_search_type1', {'email': email});
+        if (res is List && res.isNotEmpty) {
+          final targetPhone = widget.contact.phone.replaceAll(RegExp(r'[^0-9]'), '');
+          final match = res.firstWhere(
+            (e) => (e is Map) && (e['phone_no'] ?? e['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '') == targetPhone,
+            orElse: () => res[0],
+          );
+          if (match is Map) {
+            data = Map<String, dynamic>.from(match);
+            profileId ??= data['id']?.toString();
+          }
+        }
+      }
+
+      if (data != null) {
+        final rawBal = data['priority_balance'] ?? data['priority_amount'] ?? data['balance'];
+        final foundBal = rawBal != null && rawBal.toString().trim().isNotEmpty ? rawBal.toString().trim() : '0.00';
         final currentBal = double.tryParse(foundBal) ?? 0.0;
         final dbPriority = data['priority']?.toString() ?? '1';
 
-        bool isProm = dbPriority == '0';
-        if (currentBal > 0 && dbPriority == '1') {
+        bool isProm = dbPriority == '0' || currentBal > 0;
+        if (currentBal > 0 && dbPriority == '1' && profileId != null) {
           isProm = true;
           await _api.post('savepriority', {
             'id': profileId,
             'priority_amount': foundBal,
             'priority': '0',
-          });
-        } else if (currentBal <= 0 && dbPriority == '0') {
-          isProm = false;
-          await _api.post('savepriority', {
-            'id': profileId,
-            'priority_amount': '0.00',
-            'priority': '1',
           });
         }
 
@@ -129,7 +156,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
           setState(() {
             _balance = foundBal;
             _isPromoting = isProm; 
-            _isInternational = data['promote_international'] == 'yes';
+            _isInternational = data!['promote_international'] == 'yes';
             _searchType = data['search_type'] ?? 'broad';
             _selectedCountry = data['promote_country'] ?? 'All';
             _selectedState = data['promote_state'] ?? 'All';
@@ -217,7 +244,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF0F4F9),
       body: SafeArea(
         child: Column(
           children: [

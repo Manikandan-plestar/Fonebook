@@ -58,18 +58,12 @@ class _AppShellState extends State<AppShell> {
     await SystemNavigator.pop();
   }
 
-  Color _getSelectedColor(int index) {
-    return const Color(0xFF4C5B8F); // Directory, Recent & Saved: Primary Slate Navy
-  }
-
-  Color _getPillColor(int index) {
-    if (index == 0) return const Color(0xFFFFF8E1); // Warm Gold tint
-    return const Color(0xFFEEF2FF); // Soft Navy/Blue tint
-  }
-
   @override
   Widget build(BuildContext context) {
-    final selectedColor = _getSelectedColor(_index);
+    const barBgColor = Color(0xFFD3E3FD);
+    const selectedColor = Color(0xFF041E49);
+    const unselectedColor = Color(0xFF44474E);
+    final activePillColor = Colors.white.withValues(alpha: 0.55);
 
     return PopScope(
       canPop: false,
@@ -78,6 +72,7 @@ class _AppShellState extends State<AppShell> {
         await _handlePop();
       },
       child: Scaffold(
+        backgroundColor: const Color(0xFFF0F4F9),
         body: IndexedStack(
           index: _index,
           children: [
@@ -93,84 +88,128 @@ class _AppShellState extends State<AppShell> {
         ),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: barBgColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 10,
-                offset: const Offset(0, -3),
+                offset: const Offset(0, -2),
               ),
             ],
           ),
-          child: Theme(
-            data: Theme.of(context).copyWith(
-              canvasColor: Colors.white,
-              splashColor: Colors.transparent,
-              highlightColor: Colors.transparent,
-            ),
-            child: BottomNavigationBar(
-              elevation: 0,
-              currentIndex: _index,
-              onTap: (i) {
-                _navigatorKeys[i].currentState?.popUntil((route) => route.isFirst);
-                if (_index != i) {
-                  setState(() => _index = i);
-                }
-              },
-              backgroundColor: Colors.white,
-              selectedItemColor: selectedColor,
-              unselectedItemColor: const Color(0xFF757575),
-              selectedLabelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 12),
-              unselectedLabelStyle: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500, fontSize: 12),
-              type: BottomNavigationBarType.fixed,
-              items: [
-                BottomNavigationBarItem(
-                  icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _index == 0 ? _getPillColor(0) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      Icons.travel_explore,
-                      size: 22,
-                      color: _index == 0 ? const Color(0xFFD7A007) : const Color(0xFF757575),
-                    ),
-                  ),
-                  label: 'Directory',
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                canvasColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
+              child: BottomNavigationBar(
+                elevation: 0,
+                currentIndex: _index,
+                onTap: (i) {
+                  _navigatorKeys[i].currentState?.popUntil((route) => route.isFirst);
+                  if (_index != i) {
+                    setState(() => _index = i);
+                  }
+                },
+                backgroundColor: Colors.transparent,
+                selectedItemColor: selectedColor,
+                unselectedItemColor: unselectedColor,
+                selectedLabelStyle: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: selectedColor,
                 ),
-                BottomNavigationBarItem(
-                  icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _index == 1 ? _getPillColor(1) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Image.asset(
-                      'assets/images/history-icon.png',
-                      width: 22,
-                      height: 22,
-                      color: _index == 1 ? selectedColor : const Color(0xFF757575),
-                    ),
-                  ),
-                  label: 'Recent',
+                unselectedLabelStyle: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                  color: unselectedColor,
                 ),
-                BottomNavigationBarItem(
-                  icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _index == 2 ? _getPillColor(2) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
+                type: BottomNavigationBarType.fixed,
+                items: [
+                  BottomNavigationBarItem(
+                    icon: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: _index == 0 ? activePillColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: _index == 0
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Icon(
+                        Icons.travel_explore,
+                        size: 22,
+                        color: _index == 0 ? selectedColor : unselectedColor,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.contacts,
-                      size: 20,
-                      color: _index == 2 ? selectedColor : const Color(0xFF757575),
-                    ),
+                    label: 'Directory',
                   ),
-                  label: 'Contacts',
-                ),
-              ],
+                  BottomNavigationBarItem(
+                    icon: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: _index == 1 ? activePillColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: _index == 1
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Image.asset(
+                        'assets/images/recents_icon.png',
+                        width: 22,
+                        height: 22,
+                        color: _index == 1 ? selectedColor : unselectedColor,
+                      ),
+                    ),
+                    label: 'Recent',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: _index == 2 ? activePillColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: _index == 2
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Icon(
+                        Icons.contacts,
+                        size: 22,
+                        color: _index == 2 ? selectedColor : unselectedColor,
+                      ),
+                    ),
+                    label: 'Contacts',
+                  ),
+                ],
+              ),
             ),
           ),
         ),
