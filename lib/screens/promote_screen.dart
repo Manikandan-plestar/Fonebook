@@ -10,6 +10,7 @@ import '../services/location_service.dart';
 import '../services/payment_service.dart';
 import '../widgets/payment_dialog.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import '../utils/string_utils.dart';
 
 class PromoteScreen extends StatefulWidget {
   final UserSession session;
@@ -75,7 +76,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Payment Successful! Added ₹${creditAmount.toStringAsFixed(2)} to ${widget.contact.name}\'s Promotion Balance.'),
+              content: Text('Payment Successful! Added ₹${creditAmount.toStringAsFixed(2)} to ${widget.contact.name.toTitleCase()}\'s Promotion Balance.'),
               backgroundColor: Colors.green,
             ),
           );
@@ -289,7 +290,7 @@ class _PromoteScreenState extends State<PromoteScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.contact.name, 
+                                  widget.contact.name.toTitleCase(), 
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),

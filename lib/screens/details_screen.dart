@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/session_store.dart';
 import '../models/user_session.dart';
 import '../widgets/app_header.dart';
+import '../utils/string_utils.dart';
 
 class DetailsScreen extends StatefulWidget {
   final DirectoryContact contact;
@@ -206,28 +207,48 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                           ),
                           const SizedBox(width: 16),
 
-                          // ONLY Name
+                          // Name and Profession
                           Expanded(
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    c.name,
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        c.name.toTitleCase(),
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF212529),
+                                          fontFamily: 'Poppins',
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (c.verified == 1)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 6),
+                                        child: Image.asset('assets/images/verified.png', width: 18, height: 18),
+                                      ),
+                                  ],
+                                ),
+                                if (c.service.isNotEmpty && c.service.toLowerCase() != 'null') ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    c.service.toTitleCase(),
                                     style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF212529),
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF4C5B8F),
                                       fontFamily: 'Poppins',
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                                if (c.verified == 1)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 6),
-                                    child: Image.asset('assets/images/verified.png', width: 18, height: 18),
-                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -341,24 +362,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Profession Card (Label & Value)
-          if (c.service.isNotEmpty) ...[
-            _buildDetailCard(
-              title: 'Profession',
-              child: Text(
-                c.service,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF212529),
-                  fontFamily: 'Poppins',
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // 2. About / Bio Card
+          // 1. About / Bio Card
           if (c.about != null && c.about!.trim().isNotEmpty && c.about != 'null') ...[
             _buildDetailCard(
               title: 'Bio',
@@ -391,7 +395,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                     border: Border.all(color: const Color(0xFFE9ECEF)),
                   ),
                   child: Text(
-                    skill,
+                    skill.toTitleCase(),
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontFamily: 'Poppins',
@@ -405,30 +409,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
             const SizedBox(height: 16),
           ],
 
-          // 3. Contact Number Card
-          if (hasPhone) ...[
-            _buildDetailCard(
-              title: 'Contact Number',
-              child: Row(
-                children: [
-                  const Icon(Icons.phone_outlined, size: 18, color: Color(0xFF495057)),
-                  const SizedBox(width: 10),
-                  Text(
-                    c.phone,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF212529),
-                      fontFamily: 'Poppins',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // 4. Address / Location Card
+          // 3. Address / Location Card
           if (hasLocation) ...[
             _buildDetailCard(
               title: 'Address',
@@ -438,7 +419,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      c.location1!,
+                      c.location1!.toTitleCase(),
                       style: const TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w500,
@@ -655,7 +636,7 @@ class _DetailsScreenState extends State<DetailsScreen> with SingleTickerProvider
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Color(0xFF212529))),
+                                      Text(reviewerName.toTitleCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins', color: Color(0xFF212529))),
                                       if (date.isNotEmpty)
                                         Text(date, style: const TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'Poppins')),
                                     ],

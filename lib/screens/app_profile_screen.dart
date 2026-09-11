@@ -8,6 +8,7 @@ import '../models/user_session.dart';
 import '../widgets/app_header.dart';
 import 'app_shell.dart';
 import 'login_screen.dart';
+import '../utils/string_utils.dart';
 
 class AppProfileScreen extends StatefulWidget {
   final ApiClient api;
@@ -623,7 +624,7 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
                   const SizedBox(width: 18),
                   Expanded(
                     child: Text(
-                      name,
+                      name.toTitleCase(),
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF212529), fontFamily: 'Poppins'),
                     ),
                   ),

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/contact.dart';
 import '../services/session_store.dart';
 import '../services/api_client.dart';
+import '../utils/string_utils.dart';
 
 class CallDetailsScreen extends StatefulWidget {
   final DirectoryContact contact;
@@ -345,7 +346,7 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    displayName,
+                                    displayName.toTitleCase(),
                                     style: const TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
@@ -355,6 +356,20 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  if (_profession.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _profession.toTitleCase(),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF4C5B8F),
+                                        fontFamily: 'Poppins',
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                   if (widget.contact.category == 'my_contact') ...[
                                     const SizedBox(height: 6),
                                     Container(
@@ -381,29 +396,6 @@ class _CallDetailsScreenState extends State<CallDetailsScreen> {
                                       ),
                                     ),
                                   ],
-                                  if (_profession.isNotEmpty) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      _profession,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF4C5B8F),
-                                        fontFamily: 'Poppins',
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    displayPhone,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Color(0xFF5F6368),
-                                      fontFamily: 'Poppins',
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),

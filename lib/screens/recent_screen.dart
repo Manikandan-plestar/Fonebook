@@ -7,6 +7,7 @@ import '../widgets/contact_card.dart';
 import '../widgets/app_header.dart';
 import 'call_details_screen.dart';
 import 'my_contacts_screen.dart';
+import '../utils/string_utils.dart';
 
 class RecentScreen extends StatefulWidget {
   final ApiClient api;
@@ -488,7 +489,7 @@ class _RecentScreenState extends State<RecentScreen> {
                             builder: (ctx) => AlertDialog(
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               title: const Text('Delete Recent Call', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                              content: Text('Are you sure you want to remove ${contact.name} from your recent call history?'),
+                              content: Text('Are you sure you want to remove ${contact.name.toTitleCase()} from your recent call history?'),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, false),

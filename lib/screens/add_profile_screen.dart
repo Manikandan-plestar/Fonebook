@@ -903,8 +903,8 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
 
   String _getLabel(String type) {
     switch (type) {
-      case 'name': return 'Full Name';
-      case 'title': return 'Profession';
+      case 'name': return 'Name';
+      case 'title': return 'Business/Profession';
       case 'about': return 'About';
       case 'skype': return 'Skype ID / Website URL';
       case 'services': return 'Services';

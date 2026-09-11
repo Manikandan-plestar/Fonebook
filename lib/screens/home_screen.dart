@@ -1883,18 +1883,15 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Top Right Header Menu
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 250),
+            // Top Right Header Menu (Always visible at top-right)
+            Positioned(
               top: 15,
-              right: 15,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: _isSearching ? 0.0 : 1.0,
-                child: IgnorePointer(
-                  ignoring: _isSearching,
-                  child: HeaderMenu(api: widget.api, store: widget.store, session: widget.session, onUpdate: _loadFavs),
-                ),
+              right: 14,
+              child: HeaderMenu(
+                api: widget.api,
+                store: widget.store,
+                session: widget.session,
+                onUpdate: _loadFavs,
               ),
             ),
 
@@ -1947,7 +1944,13 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildSearchCard(),
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: _isSearching ? 14 : 24,
+                      right: _isSearching ? 56 : 24,
+                    ),
+                    child: _buildSearchCard(),
+                  ),
                   const SizedBox(height: 6),
                   _buildScopePill(),
                 ],
@@ -2093,80 +2096,78 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: InkWell(
-        onTap: () {
-          if (!_isSearching) {
-            setState(() {
-              _isSearching = true;
-              widget.onSearchModeChanged(true);
-            });
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _focus.requestFocus();
-            });
-          }
-        },
-        child: Card(
-          color: Colors.white,
-          surfaceTintColor: Colors.white,
-          elevation: 3,
-          shadowColor: Colors.black.withValues(alpha: 0.1),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(26),
-            side: BorderSide(color: Colors.grey.shade200, width: 1),
-          ),
-          child: Container(
-            height: 52,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                if (_isSearching)
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Color(0xFF5F6368)),
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = false;
-                        _search.clear();
-                        _results.clear();
-                        _hasSearched = false;
-                        _focus.unfocus();
-                        widget.onSearchModeChanged(false);
-                      });
-                    },
-                  )
-                else
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Icon(Icons.search, color: Color(0xFF5F6368)),
-                  ),
-                Expanded(
-                  child: TextField(
-                    controller: _search,
-                    focusNode: _focus,
-                    onTap: () {
-                      if (!_isSearching) {
-                        setState(() {
-                          _isSearching = true;
-                          widget.onSearchModeChanged(true);
-                        });
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _focus.requestFocus();
-                        });
-                      }
-                    },
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (val) => _doSearch(val),
-                    onChanged: _onSearchChanged,
-                    decoration: const InputDecoration(
-                      hintText: 'Search name or Keyword...',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                      hintStyle: TextStyle(color: Color(0xFF5F6368), fontFamily: 'Poppins'),
-                    ),
-                    style: const TextStyle(fontSize: 16, fontFamily: 'Poppins', color: Color(0xFF202124)),
-                  ),
+    return InkWell(
+      onTap: () {
+        if (!_isSearching) {
+          setState(() {
+            _isSearching = true;
+            widget.onSearchModeChanged(true);
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focus.requestFocus();
+          });
+        }
+      },
+      child: Card(
+        color: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: 0.1),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(26),
+          side: BorderSide(color: Colors.grey.shade200, width: 1),
+        ),
+        child: Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              if (_isSearching)
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Color(0xFF5F6368)),
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = false;
+                      _search.clear();
+                      _results.clear();
+                      _hasSearched = false;
+                      _focus.unfocus();
+                      widget.onSearchModeChanged(false);
+                    });
+                  },
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Icon(Icons.search, color: Color(0xFF5F6368)),
                 ),
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  focusNode: _focus,
+                  onTap: () {
+                    if (!_isSearching) {
+                      setState(() {
+                        _isSearching = true;
+                        widget.onSearchModeChanged(true);
+                      });
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _focus.requestFocus();
+                      });
+                    }
+                  },
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (val) => _doSearch(val),
+                  onChanged: _onSearchChanged,
+                  decoration: const InputDecoration(
+                    hintText: 'Search name or Keyword...',
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    hintStyle: TextStyle(color: Color(0xFF5F6368), fontFamily: 'Poppins'),
+                  ),
+                  style: const TextStyle(fontSize: 16, fontFamily: 'Poppins', color: Color(0xFF202124)),
+                ),
+              ),
               if (_search.text.isNotEmpty) ...[
                 IconButton(
                   icon: const Icon(Icons.search, color: Color(0xFF5F6368)),
@@ -2190,9 +2191,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 class _CandidateWrapper {

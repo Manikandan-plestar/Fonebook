@@ -11,6 +11,7 @@ import '../models/user_session.dart';
 import '../models/contact.dart';
 import '../widgets/app_header.dart';
 import '../services/dial_codes.dart';
+import '../utils/string_utils.dart';
 
 class MyContactItem {
   final int? id;
@@ -1791,7 +1792,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete Contact'),
-        content: Text('Are you sure you want to delete ${item.name}?'),
+        content: Text('Are you sure you want to delete ${item.name.toTitleCase()}?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
@@ -1821,7 +1822,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Deleting "${item.name}"...',
+                        'Deleting "${item.name.toTitleCase()}"...',
                         style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                       const SizedBox(height: 4),
@@ -2217,7 +2218,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                                       builder: (ctx) => AlertDialog(
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                         title: const Text('Delete Contact', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                                        content: Text('Are you sure you want to delete ${item.name}?'),
+                                        content: Text('Are you sure you want to delete ${item.name.toTitleCase()}?'),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(ctx, false),
@@ -2334,7 +2335,7 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    item.name.isNotEmpty ? item.name : 'No Name',
+                    item.name.isNotEmpty ? item.name.toTitleCase() : 'No Name',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF212529), fontFamily: 'Poppins'),

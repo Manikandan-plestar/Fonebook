@@ -11,6 +11,7 @@ import 'promote_screen.dart';
 import 'reports_screen.dart';
 import 'visibility_screen.dart';
 import 'phone_entry_screen.dart';
+import '../utils/string_utils.dart';
 
 class ProfileListScreen extends StatefulWidget {
   final ApiClient api;
@@ -347,7 +348,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    p.name,
+                    p.name.toTitleCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF212529), fontFamily: 'Poppins'),
@@ -355,7 +356,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                   if (p.service.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
-                      p.service,
+                      p.service.toTitleCase(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13, color: Color(0xFF212529), fontFamily: 'Poppins'),
@@ -369,7 +370,7 @@ class _ProfileListScreenState extends State<ProfileListScreen> {
                         const SizedBox(width: 3),
                         Expanded(
                           child: Text(
-                            p.location1!,
+                            p.location1!.toTitleCase(),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF212529), fontFamily: 'Poppins'),

@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/contact.dart';
 import '../services/api_client.dart';
 import '../services/session_store.dart';
+import '../utils/string_utils.dart';
 
 class ContactCard extends StatelessWidget {
   final DirectoryContact contact;
@@ -73,8 +74,8 @@ class ContactCard extends StatelessWidget {
     final hasName = contact.name.isNotEmpty;
     final hasService = contact.service.isNotEmpty && contact.service != 'null';
     final String titleText = (hasName && hasService)
-        ? '${contact.name} - ${contact.service}'
-        : (hasName ? contact.name : (hasService ? contact.service : 'Contact Options'));
+        ? '${contact.name.toTitleCase()} - ${contact.service.toTitleCase()}'
+        : (hasName ? contact.name.toTitleCase() : (hasService ? contact.service.toTitleCase() : 'Contact Options'));
 
     showGeneralDialog(
       context: context,
@@ -261,7 +262,7 @@ class ContactCard extends StatelessWidget {
           ],
         ),
         content: Text(
-          'Are you sure you want to remove ${contact.name.isNotEmpty ? contact.name : 'this contact'} from your favourites?',
+          'Are you sure you want to remove ${contact.name.isNotEmpty ? contact.name.toTitleCase() : 'this contact'} from your favourites?',
           style: const TextStyle(
             fontSize: 14,
             fontFamily: 'Poppins',
@@ -326,14 +327,14 @@ class ContactCard extends StatelessWidget {
     String subtitle = "";
     if (showTime) {
       if (hasValidService && timeAgo.isNotEmpty) {
-        subtitle = "${contact.service} • $timeAgo";
+        subtitle = "${contact.service.toTitleCase()} • $timeAgo";
       } else if (hasValidService) {
-        subtitle = contact.service;
+        subtitle = contact.service.toTitleCase();
       } else {
         subtitle = timeAgo;
       }
     } else {
-      subtitle = hasValidService ? contact.service : "";
+      subtitle = hasValidService ? contact.service.toTitleCase() : "";
     }
 
     return InkWell(
@@ -410,7 +411,7 @@ class ContactCard extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          contact.name,
+                          contact.name.toTitleCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF212529), fontFamily: 'Poppins'),
@@ -421,28 +422,48 @@ class ContactCard extends StatelessWidget {
                           padding: const EdgeInsets.only(left: 4),
                           child: Image.asset('assets/images/verified.png', width: 15, height: 15),
                         ),
-                      if (isMyContact)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF4C5B8F).withValues(alpha: 0.12),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.person, size: 12, color: Color(0xFF4C5B8F)),
-                          ),
-                        ),
                     ],
                   ),
 
+                  if (isMyContact) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4C5B8F).withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.person, size: 11, color: Color(0xFF4C5B8F)),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'My Contact',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF4C5B8F),
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
                   if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF212529), fontFamily: 'Poppins'),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF212529),
+                        fontFamily: 'Poppins',
+                      ),
                     ),
                   ],
                   if (!isMyContact && !showTime && contact.location1 != null && contact.location1!.trim().isNotEmpty) ...[
@@ -453,7 +474,7 @@ class ContactCard extends StatelessWidget {
                         const SizedBox(width: 3),
                         Expanded(
                           child: Text(
-                            contact.location1!,
+                            contact.location1!.toTitleCase(),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, color: Color(0xFF212529), fontWeight: FontWeight.w600, fontFamily: 'Poppins'),

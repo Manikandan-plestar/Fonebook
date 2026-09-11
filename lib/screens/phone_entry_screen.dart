@@ -88,12 +88,12 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
                   children: [
                     const SizedBox(height: 50),
                     const Text(
-                      'Business Contact',
+                      'FoneBook Directory',
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF232323), fontFamily: 'Poppins'),
                     ),
                     const SizedBox(height: 15),
                     const Text(
-                      'Enter the phone number you want to list in the directory.',
+                      'Enter your Business/Profession contact number you want to list in the directory.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, color: Colors.grey, fontFamily: 'Poppins'),
                     ),
