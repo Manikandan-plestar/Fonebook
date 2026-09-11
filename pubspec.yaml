@@ -37,12 +37,13 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/images/phonelogosmall.png"
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/phonelogosmall.png"
+  image_path: "assets/images/phonelogosmall_zoomed.png"
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/images/phonelogosmall_zoomed.png"
   min_sdk_android: 21
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/

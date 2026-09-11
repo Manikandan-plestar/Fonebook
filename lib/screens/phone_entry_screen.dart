@@ -88,7 +88,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
                   children: [
                     const SizedBox(height: 50),
                     const Text(
-                      'FoneBook Directory',
+                      'Fone Book Directory',
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF232323), fontFamily: 'Poppins'),
                     ),
                     const SizedBox(height: 15),

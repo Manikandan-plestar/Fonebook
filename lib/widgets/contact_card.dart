@@ -458,10 +458,10 @@ class ContactCard extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF212529),
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF212529).withValues(alpha: 0.65),
                         fontFamily: 'Poppins',
                       ),
                     ),
