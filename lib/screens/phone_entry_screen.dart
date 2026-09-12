@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/user_session.dart';
 import '../services/api_client.dart';
 import '../services/dial_codes.dart';
 import '../widgets/app_header.dart';
@@ -76,9 +77,9 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen> {
             AppHeader(
               title: 'Fone Book',
               onBack: () => Navigator.pop(context),
-              showMenu: false,
+              showMenu: true,
               api: ApiClient(),
-              session: null,
+              session: UserSession(email: widget.email),
               store: SessionStore(),
             ),
             Expanded(

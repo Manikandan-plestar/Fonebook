@@ -904,7 +904,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
   String _getLabel(String type) {
     switch (type) {
       case 'name': return 'Name';
-      case 'title': return 'Business/Profession';
+      case 'title': return 'Business / Profession';
       case 'about': return 'About';
       case 'skype': return 'Skype ID / Website URL';
       case 'services': return 'Services';
@@ -922,7 +922,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
         child: Column(
           children: [
             AppHeader(
-              title: isEdit ? 'Edit Business' : 'Business Profile',
+              title: isEdit ? 'Edit Directory' : 'Directory Profile',
               onBack: () => Navigator.pop(context),
               showMenu: true,
               api: _api,
@@ -984,7 +984,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
                     _buildTextField(_aboutController, _getLabel('about'), maxLines: 5, inputFormatters: [LengthLimitingTextInputFormatter(600)]),
                     _buildTextField(
                       _locationController, 
-                      'Business Location (GPS Only)', 
+                      'Business Location (Current Location)', 
                       isReadOnly: true, 
                       maxLines: 3,
                       onTap: _onLocationFieldTap,
