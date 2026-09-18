@@ -563,7 +563,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     final payment = PaymentService();
     payment.initialize();
 
-    // Query Google Play Billing for active Play Console products (prioritize create_profile_499, fallback to existing promote_3/promote_1)
+    // Query In-App Purchases for active store products (prioritize create_profile_499, fallback to existing promote_3/promote_1)
     final bool available = await payment.loadProducts([
       'create_profile_499',
       'promote_3',
@@ -573,7 +573,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     ]);
 
     if (!available || payment.products.isEmpty) {
-      // If Play Store Billing is unavailable on debug build or test device, provide test verification option
+      // If In-App Purchase service is unavailable on this build/device, provide test verification option
       bool? confirmTestPayment = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -588,7 +588,7 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
               SizedBox(height: 12),
               Text('Price: ₹499 / 1 Year', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFD7B41A))),
               SizedBox(height: 8),
-              Text('(Google Play Billing unavailable on this debug build/device. Confirm test payment verification to create profile.)', style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
+              Text('(In-App Purchase unavailable on this device. Confirm test verification to proceed.)', style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
             ],
           ),
           actions: [
