@@ -560,6 +560,75 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     String location1,
     String country,
   ) async {
+    // 1. Show subscription prompt dialog first
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+    
+    final bool? proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Business Profile Subscription',
+          style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Creating a Business Profile requires an annual subscription of ₹499 for 1 year.',
+              style: TextStyle(fontFamily: 'Poppins', fontSize: 14),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Price: ₹499 / 1 Year',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Color(0xFFD7B41A),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD7B41A),
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Pay ₹499', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed != true) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment cancelled. Business Profile was not created.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
+
+    // 2. Initialize and load In-App Purchase products
     final payment = PaymentService();
     payment.initialize();
 
@@ -573,57 +642,26 @@ class _AddProfileScreenState extends State<AddProfileScreen> {
     ]);
 
     if (!available || payment.products.isEmpty) {
-      // If In-App Purchase service is unavailable on this build/device, provide test verification option
-      bool? confirmTestPayment = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Business Profile Subscription', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Creating a Business Profile requires an annual subscription of ₹499 for 1 year.', style: TextStyle(fontFamily: 'Poppins', fontSize: 14)),
-              SizedBox(height: 12),
-              Text('Price: ₹499 / 1 Year', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFD7B41A))),
-              SizedBox(height: 8),
-              Text('(In-App Purchase unavailable on this device. Confirm test verification to proceed.)', style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey)),
+      if (mounted) {
+        setState(() => _isLoading = false);
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('In-App Purchase Unavailable', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+            content: const Text(
+              'Unable to load subscription details from the store. Please ensure your device is connected to the App Store / Play Store and try again.',
+              style: TextStyle(fontFamily: 'Poppins', fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD7B41A), foregroundColor: Colors.black),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Pay ₹499', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmTestPayment != true) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Payment failed. Business Profile was not created.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
+        );
       }
-
-      final txId = 'tx_499_${DateTime.now().millisecondsSinceEpoch}';
-      finalBody['transaction_id'] = txId;
-      finalBody['payment_status'] = 'completed';
-      finalBody['amount'] = '499';
-
-      await _createProfileInBackend(finalBody, phone, location, location1, country);
       return;
     }
 

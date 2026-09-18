@@ -64,14 +64,28 @@ class PaymentService {
     return true;
   }
 
-  Future<void> buyProduct(ProductDetails product) async {
+  Future<void> buyProduct(ProductDetails product, {bool consumable = true}) async {
     if (kIsWeb) return;
-    debugPrint("Initiating purchase for: ${product.id}");
+    debugPrint("Initiating purchase for: ${product.id} (consumable=$consumable)");
     final PurchaseParam purchaseParam = PurchaseParam(productDetails: product);
     try {
-      await _iap.buyConsumable(purchaseParam: purchaseParam);
+      if (consumable) {
+        await _iap.buyConsumable(purchaseParam: purchaseParam);
+      } else {
+        await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+      }
     } catch (e) {
-      debugPrint("Purchase Initiation Error: $e");
+      debugPrint("Purchase Initiation Error: $e, trying fallback...");
+      try {
+        if (consumable) {
+          await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+        } else {
+          await _iap.buyConsumable(purchaseParam: purchaseParam);
+        }
+      } catch (e2) {
+        debugPrint("Purchase Fallback Error: $e2");
+        rethrow;
+      }
     }
   }
 
