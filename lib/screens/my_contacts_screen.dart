@@ -13,6 +13,7 @@ import '../models/contact.dart';
 import '../widgets/app_header.dart';
 import '../services/dial_codes.dart';
 import '../utils/string_utils.dart';
+import '../services/contact_export_service.dart';
 
 class MyContactItem {
   final int? id;
@@ -333,320 +334,33 @@ class _MyContactsScreenState extends State<MyContactsScreen> {
     _isExporting = true;
 
     try {
-      // 1. Verify and request contact permissions
-      bool hasPermission = false;
-      try {
-        final status = await Permission.contacts.request();
-        hasPermission = status.isGranted || await Permission.contacts.isGranted;
-      } catch (e) {
-        debugPrint('[EXPORT] Error requesting Permission.contacts: $e');
-      }
-
-      if (!hasPermission) {
-        try {
-          hasPermission = await FlutterContacts.permissions.request(PermissionType.read) == PermissionStatus.granted;
-        } catch (e) {
-          debugPrint('[EXPORT] Error requesting FlutterContacts permission: $e');
-        }
-      }
-
-      if (!hasPermission) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Contact permission is required to export contacts to your device.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
-      // 2. Fetch authoritative contacts from the Application Database
       final email = await _getEffectiveEmail();
-      final dbRes = await widget.api.post('get_my_contacts', {
-        'email': email,
-        'owner_email': email,
-      });
+      if (!mounted) return;
 
-      List<Map<String, dynamic>> allDbContacts = [];
-      if (dbRes is List) {
-        for (final item in dbRes) {
-          if (item is Map) {
-            allDbContacts.add(Map<String, dynamic>.from(item));
-          }
-        }
-      }
-
-      // Map selected items from the UI to their unique IDs and phones
-      final selectedItems = _contacts.where((c) => _selectedPhones.contains(c.phone)).toList();
-      final selectedIds = selectedItems
-          .map((c) => c.id?.toString())
-          .where((id) => id != null && id.isNotEmpty)
-          .toSet();
-      final selectedPhoneSet = Set<String>.from(_selectedPhones);
-
-      // Filter database records to get only the selected contacts using ID / phone matching
-      final selectedDbContacts = allDbContacts.where((db) {
-        final id = db['id']?.toString();
-        final phone = db['phone']?.toString() ?? db['phone_no']?.toString() ?? '';
-        if (id != null && id.isNotEmpty && selectedIds.contains(id)) {
-          return true;
-        }
-        return selectedPhoneSet.contains(phone);
+      final fallback = _contacts.map((item) => {
+        'id': item.id,
+        'name': item.name,
+        'phone': item.phone,
+        'title': item.title,
+        'owner_email': item.ownerEmail,
+        'category': item.category,
       }).toList();
 
-      // Fallback: If dbRes returned empty (e.g. offline/error), use selectedItems
-      final List<Map<String, dynamic>> rawSourceContacts = selectedDbContacts.isNotEmpty
-          ? selectedDbContacts
-          : selectedItems.map((item) => {
-              'id': item.id,
-              'name': item.name,
-              'phone': item.phone,
-              'title': item.title,
-            }).toList();
-
-      // 3. De-duplicate among selected contacts using normalized phone numbers
-      final seenSelectedKeys = <String>{};
-      final uniqueSelectedContacts = <Map<String, dynamic>>[];
-
-      for (final contact in rawSourceContacts) {
-        final rawPhone = contact['phone']?.toString() ?? contact['phone_no']?.toString() ?? '';
-        final key = getCanonicalPhoneKey(rawPhone);
-        if (key.isNotEmpty) {
-          if (seenSelectedKeys.contains(key)) {
-            continue; // Duplicate within selection, keep only one
-          }
-          seenSelectedKeys.add(key);
-        }
-        uniqueSelectedContacts.add(contact);
-      }
-
-      // 4. Read existing device contacts to detect duplicates
-      final fastProperties = ContactProperty.values
-          .where((p) => p.name != 'photo' && p.name != 'thumbnail')
-          .toSet();
-      List<Contact> deviceContacts = [];
-      try {
-        deviceContacts = await FlutterContacts.getAll(properties: fastProperties);
-      } catch (e) {
-        debugPrint('[EXPORT] Error reading device contacts: $e');
-      }
-
-      final existingDevicePhoneKeys = <String>{};
-      for (final dc in deviceContacts) {
-        for (final p in dc.phones) {
-          final key = getCanonicalPhoneKey(p.number);
-          if (key.isNotEmpty) {
-            existingDevicePhoneKeys.add(key);
-          }
-        }
-      }
-
-      // 5. Separate new contacts from skipped duplicates
-      final List<Map<String, dynamic>> toExportList = [];
-      int skippedCount = 0;
-
-      for (final contact in uniqueSelectedContacts) {
-        final rawPhone = contact['phone']?.toString() ?? contact['phone_no']?.toString() ?? '';
-        final key = getCanonicalPhoneKey(rawPhone);
-        if (key.isNotEmpty && existingDevicePhoneKeys.contains(key)) {
-          skippedCount++;
-        } else {
-          toExportList.add(contact);
-        }
-      }
-
-      if (toExportList.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                skippedCount == 1
-                    ? 'The selected contact already exists on your device.'
-                    : 'All $skippedCount selected contacts already exist on your device.',
-              ),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          setState(() {
-            _isSelectionMode = false;
-            _selectedPhones.clear();
-          });
-        }
-        return;
-      }
-
-      if (!mounted) return;
-
-      // 6. Show Export Progress Dialog (matching Import style)
-      final int totalToExport = toExportList.length;
-
-      showDialog(
+      await ContactExportService.startExport(
         context: context,
-        barrierDismissible: false,
-        builder: (progressCtx) => AlertDialog(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFD7B41A)),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Exporting $totalToExport Contact${totalToExport > 1 ? 's' : ''}...',
-                        style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Please wait while contacts are being exported.',
-                        style: TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      // 7. Perform the export loop
-      int exportedCount = 0;
-      int failedCount = 0;
-      String? lastExportError;
-      final stopwatch = Stopwatch()..start();
-
-      for (final contact in toExportList) {
-        final rawName = (contact['name']?.toString() ?? '').trim();
-        final rawPhone = contact['phone']?.toString() ?? contact['phone_no']?.toString() ?? '';
-        final cleanPhone = normalizePhoneNumber(rawPhone);
-        final title = (contact['title']?.toString() ?? '').trim();
-        final emailVal = (contact['email']?.toString() ?? '').trim();
-        final additionalPhonesRaw = contact['phonenos']?.toString() ??
-            contact['additional_phones']?.toString() ??
-            '';
-
-        // Construct Name parts
-        final nameParts = rawName.split(' ');
-        final firstName = nameParts.isNotEmpty ? nameParts.first : (rawName.isNotEmpty ? rawName : 'Contact');
-        final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
-
-        // Construct Phones list
-        final phonesList = <Phone>[Phone(number: cleanPhone)];
-        if (additionalPhonesRaw.isNotEmpty) {
-          for (final p in additionalPhonesRaw.split(RegExp(r'[,;]'))) {
-            final normalizedExtra = normalizePhoneNumber(p.trim());
-            if (normalizedExtra.isNotEmpty && normalizedExtra != cleanPhone) {
-              phonesList.add(Phone(number: normalizedExtra));
-            }
+        api: widget.api,
+        email: email,
+        selectedPhones: Set<String>.from(_selectedPhones),
+        fallbackContacts: fallback,
+        onComplete: () {
+          if (mounted) {
+            setState(() {
+              _isSelectionMode = false;
+              _selectedPhones.clear();
+            });
           }
-        }
-
-        // Construct Emails list
-        final emailsList = <Email>[];
-        if (emailVal.isNotEmpty && emailVal.contains('@')) {
-          emailsList.add(Email(address: emailVal));
-        }
-
-        // Construct Organizations list
-        final orgList = <Organization>[];
-        if (title.isNotEmpty) {
-          orgList.add(Organization(name: title, jobTitle: title));
-        }
-
-        final newContact = Contact(
-          name: Name(
-            first: firstName,
-            last: lastName,
-          ),
-          phones: phonesList,
-          emails: emailsList,
-          organizations: orgList,
-        );
-
-        try {
-          await FlutterContacts.create(newContact);
-          exportedCount++;
-        } catch (e) {
-          debugPrint('[EXPORT] Error exporting contact $rawName: $e');
-          lastExportError = e.toString();
-          failedCount++;
-        }
-
-        if ((exportedCount + failedCount) % 10 == 0) {
-          await Future.delayed(const Duration(milliseconds: 1));
-        }
-      }
-
-      final elapsed = stopwatch.elapsedMilliseconds;
-      if (elapsed < 1200) {
-        await Future.delayed(Duration(milliseconds: 1200 - elapsed));
-      }
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // Dismiss progress dialog
-
-      // 8. Show descriptive result message
-      if (failedCount == 0) {
-        if (skippedCount == 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                exportedCount == 1
-                    ? '1 contact exported successfully.'
-                    : '$exportedCount contacts exported successfully.',
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '$exportedCount contact${exportedCount > 1 ? 's' : ''} exported successfully. $skippedCount duplicate contact${skippedCount > 1 ? 's were' : ' was'} skipped.',
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else if (exportedCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Export completed: $exportedCount exported, $skippedCount skipped, $failedCount failed.',
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              lastExportError != null && lastExportError.contains('permission')
-                  ? 'Write contacts permission is required to save contacts.'
-                  : 'Failed to export $failedCount contact(s). Please try again.',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-
-      setState(() {
-        _isSelectionMode = false;
-        _selectedPhones.clear();
-      });
+        },
+      );
     } catch (e) {
       debugPrint('[EXPORT] General export error: $e');
       if (mounted) {

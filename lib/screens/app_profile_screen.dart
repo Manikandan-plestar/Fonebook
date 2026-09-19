@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:permission_handler/permission_handler.dart' hide PermissionStatus;
 import '../services/api_client.dart';
 import '../services/session_store.dart';
 import '../services/dial_codes.dart';
@@ -9,6 +11,7 @@ import '../widgets/app_header.dart';
 import 'app_shell.dart';
 import 'login_screen.dart';
 import '../utils/string_utils.dart';
+import '../services/contact_export_service.dart';
 
 class AppProfileScreen extends StatefulWidget {
   final ApiClient api;
@@ -644,24 +647,52 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
 
         const SizedBox(height: 30),
 
-        // Edit Profile Button
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4C5B8F),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
+        // Export Contacts & Edit Profile Side-by-Side Buttons
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4C5B8F),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  onPressed: _openExportContactsSelection,
+                  icon: const Icon(Icons.upload_rounded, size: 18),
+                  label: const Text(
+                    'Export Contacts',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ),
-            onPressed: () => setState(() => _isEditing = true),
-            icon: const Icon(Icons.edit, size: 20),
-            label: const Text(
-              'Edit Profile',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4C5B8F),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  onPressed: () => setState(() => _isEditing = true),
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text(
+                    'Edit Profile',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
 
         const SizedBox(height: 14),
@@ -1082,6 +1113,244 @@ class _AppProfileScreenState extends State<AppProfileScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openExportContactsSelection() async {
+    final email = await _getEffectiveEmail();
+    if (email.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please log in to export contacts.')),
+        );
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFFD7B41A)),
+      ),
+    );
+
+    List<Map<String, dynamic>> rawContacts = [];
+    try {
+      final res = await widget.api.post('get_my_contacts', {'email': email, 'owner_email': email});
+      List items = [];
+      if (res is List) {
+        items = res;
+      } else if (res is Map && res['data'] is List) {
+        items = res['data'];
+      } else if (res is Map && res['contacts'] is List) {
+        items = res['contacts'];
+      }
+
+      for (final item in items) {
+        if (item is Map) {
+          final cat = item['category']?.toString().toLowerCase() ?? '';
+          if (cat == 'app_profile') continue;
+          final title = item['title']?.toString() ?? '';
+          if (title.contains('"pincode"') || title.contains('"address"') || title.contains('"owner_email"')) continue;
+          final appProf = item['app_profile']?.toString() ?? '';
+          if (appProf.isNotEmpty && appProf != 'null') continue;
+
+          rawContacts.add(Map<String, dynamic>.from(item));
+        }
+      }
+    } catch (e) {
+      debugPrint('[EXPORT] Error fetching contacts for export: $e');
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    if (!mounted) return;
+
+    if (rawContacts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No saved contacts available to export.')),
+      );
+      return;
+    }
+
+    // Open Bottom Sheet with search and selection
+    final searchCtrl = TextEditingController();
+    final Set<int> selectedIndices = <int>{};
+    List<MapEntry<int, Map<String, dynamic>>> filtered = rawContacts.asMap().entries.toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void filter(String query) {
+              final q = query.toLowerCase().trim();
+              setModalState(() {
+                if (q.isEmpty) {
+                  filtered = rawContacts.asMap().entries.toList();
+                } else {
+                  filtered = rawContacts.asMap().entries.where((entry) {
+                    final item = entry.value;
+                    final name = (item['name']?.toString() ?? '').toLowerCase();
+                    final phone = (item['phone']?.toString() ?? item['phone_no']?.toString() ?? '').toLowerCase();
+                    final title = (item['title']?.toString() ?? '').toLowerCase();
+                    return name.contains(q) || phone.contains(q) || title.contains(q);
+                  }).toList();
+                }
+              });
+            }
+
+            return SafeArea(
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.70,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Export Contacts',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                        ),
+                        Text(
+                          '${selectedIndices.length} selected',
+                          style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'Poppins'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: searchCtrl,
+                      onChanged: filter,
+                      decoration: InputDecoration(
+                        hintText: 'Search contacts...',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: const Color(0xFFF1F3F4),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              selectedIndices.clear();
+                              for (int i = 0; i < rawContacts.length; i++) {
+                                selectedIndices.add(i);
+                              }
+                            });
+                          },
+                          child: const Text(
+                            'Select All',
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Poppins', fontSize: 14),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              selectedIndices.clear();
+                            });
+                          },
+                          child: const Text(
+                            'Deselect All',
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Poppins', fontSize: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(child: Text('No contacts match your search', style: TextStyle(fontFamily: 'Poppins')))
+                          : ListView.builder(
+                              itemCount: filtered.length,
+                              itemBuilder: (c, i) {
+                                final entry = filtered[i];
+                                final originalIndex = entry.key;
+                                final item = entry.value;
+                                final isSelected = selectedIndices.contains(originalIndex);
+                                final name = item['name']?.toString() ?? 'Unknown';
+                                final rawPhone = item['phone']?.toString() ?? item['phone_no']?.toString() ?? '';
+                                final phone = normalizePhoneNumber(rawPhone);
+                                final title = (item['title']?.toString() ?? '').trim();
+
+                                return CheckboxListTile(
+                                  value: isSelected,
+                                  activeColor: const Color(0xFF4C5B8F),
+                                  checkColor: Colors.white,
+                                  title: Text(name.toTitleCase(), style: const TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                                  subtitle: Text(
+                                    title.isNotEmpty ? '$phone • $title' : phone,
+                                    style: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Colors.grey),
+                                  ),
+                                  onChanged: (val) {
+                                    setModalState(() {
+                                      if (val == true) {
+                                        selectedIndices.add(originalIndex);
+                                      } else {
+                                        selectedIndices.remove(originalIndex);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4C5B8F),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: selectedIndices.isEmpty
+                            ? null
+                            : () {
+                                Navigator.pop(ctx);
+                                final selectedList = selectedIndices
+                                    .map((idx) => rawContacts[idx])
+                                    .toList();
+                                _startBatchExport(selectedList);
+                              },
+                        child: Text(
+                          'Export ${selectedIndices.length} Contacts',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _startBatchExport(List<Map<String, dynamic>> selectedContacts) async {
+    final email = await _getEffectiveEmail();
+    if (!mounted) return;
+
+    await ContactExportService.startExport(
+      context: context,
+      api: widget.api,
+      email: email,
+      preSelectedContacts: selectedContacts,
     );
   }
 }
