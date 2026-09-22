@@ -35,13 +35,13 @@ if (fs.existsSync(privKeyPath) && fs.existsSync(certPath)) {
     const httpsServer = https.createServer(credentials, app);
     const httpsPort = 3002;
     httpsServer.listen(httpsPort, () => {
-        console.log(`Server is running on https://apps.plestarinc.com:${httpsPort}`);
+        // console.log(`Server is running on https://apps.plestarinc.com:${httpsPort}`);
     });
 } else {
     const httpServer = http.createServer(app);
     const httpPort = 8000;
     httpServer.listen(httpPort, () => {
-        console.log(`Server is running on http://localhost:${httpPort}`);
+        // console.log(`Server is running on http://localhost:${httpPort}`);
     });
 }
 /*async function connectToMongoDB() {
@@ -192,8 +192,8 @@ db.connect((err) => {
         console.error('Error connecting to MySQL:', err.message);
         return;
     }
-    console.log('Connected to MySQL');
-    
+    // console.log('Connected to MySQL');
+
     const migrateLegacyReviews = () => {
         const legacyMigrationSql = `
             UPDATE reviews r
@@ -209,7 +209,7 @@ db.connect((err) => {
         db.query(legacyMigrationSql, (migErr, migResult) => {
             if (migErr) console.error("Error migrating legacy reviews:", migErr);
             else if (migResult && migResult.changedRows > 0) {
-                console.log(`Migrated ${migResult.changedRows} legacy reviews to single-profile Business Profile IDs`);
+                // console.log(`Migrated ${migResult.changedRows} legacy reviews to single-profile Business Profile IDs`);
             }
         });
     };
@@ -220,7 +220,7 @@ db.connect((err) => {
             db.query("ALTER TABLE reviews ADD COLUMN contact_id INT DEFAULT NULL AFTER id", (alterErr) => {
                 if (alterErr) console.error("Error adding contact_id column to reviews table:", alterErr);
                 else {
-                    console.log("Added contact_id column to reviews table");
+                    // console.log("Added contact_id column to reviews table");
                     migrateLegacyReviews();
                 }
             });
@@ -243,7 +243,7 @@ db.connect((err) => {
             if (!cErr && cRows && cRows.length === 0) {
                 db.query(`ALTER TABLE contacts ADD COLUMN ${col.name} ${col.type}`, (aErr) => {
                     if (aErr) console.error(`Error adding column ${col.name} to contacts table:`, aErr);
-                    else console.log(`Added column ${col.name} to contacts table`);
+                    // else console.log(`Added column ${col.name} to contacts table`);
                 });
             }
         });
@@ -288,13 +288,13 @@ app.post('/savecontacts', (req, res) => {
                         console.error(updateErr);
                         return res.status(500).send('Error updating profile');
                     }
-                    console.log(`Business profile ${id} updated successfully`);
+                    // console.log(`Business profile ${id} updated successfully`);
                     res.status(200).json({ status: 'success', id: id, message: 'Phone number saved successfully' });
                     if (imageBuffer != null && uniqueFilename) {
                         const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
                         fs.writeFile(imagePath, imageBuffer, 'base64', (err) => {
                             if (err) console.error(err);
-                            else console.log('Image saved successfully');
+                            // else console.log('Image saved successfully');
                         });
                     }
                 });
@@ -311,7 +311,7 @@ app.post('/savecontacts', (req, res) => {
                         console.error(insertErr);
                         return res.status(500).send('Error creating profile');
                     }
-                    console.log(`New profile created with ID ${insertResult.insertId}`);
+                    // console.log(`New profile created with ID ${insertResult.insertId}`);
                     res.status(200).json({ status: 'success', id: insertResult.insertId, message: 'Phone number saved successfully' });
                     if (imageBuffer != null && uniqueFilename) {
                         const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
@@ -499,7 +499,7 @@ app.post('/savecontacts1', (req, res) => {
                 console.error(insertErr);
                 return res.status(500).send('Error submitting report');
             }
-            console.log(`Phone number saved successfully with new ID: ${insertResult.insertId}`);
+            // console.log(`Phone number saved successfully with new ID: ${insertResult.insertId}`);
             res.status(200).json({ status: 'success', id: insertResult.insertId, message: 'Phone number saved successfully' });
             if (imageBuffer != null && uniqueFilename) {
                 const imagePath = path.join(__dirname, 'uploads', uniqueFilename);
@@ -654,7 +654,7 @@ app.post('/delete_contact', (req, res) => {
                 console.error(updateErr);
                 res.status(500).send('Error deleting profile');
             } else {
-                console.log(`Profile ${id} deleted`);
+                // console.log(`Profile ${id} deleted`);
                 res.status(200).send('phone no deleted');
             }
         });
@@ -667,7 +667,7 @@ app.post('/delete_contact', (req, res) => {
                 console.error(updateErr);
                 res.status(500).send('Error updating call count');
             } else {
-                console.log('Phone no deleted');
+                // console.log('Phone no deleted');
                 res.status(200).send('phone no deleted');
             }
         });
@@ -685,7 +685,7 @@ app.post('/savetags', (req, res) => {
                 console.error(updateErr);
                 res.status(500).send('Error updating keywords');
             } else {
-                console.log(`Keywords updated for profile ${id}`);
+                // console.log(`Keywords updated for profile ${id}`);
                 res.status(200).send('Phone number saved successfully');
             }
         });
@@ -698,7 +698,7 @@ app.post('/savetags', (req, res) => {
                 console.error(updateErr);
                 res.status(500).send('Error updating phone number');
             } else {
-                console.log('Phone number updated successfully');
+                // console.log('Phone number updated successfully');
                 res.status(200).send('Phone number saved successfully');
             }
         });
@@ -714,7 +714,7 @@ app.post('/savesearch', (req, res) => {
             console.error(updateErr);
             res.status(500).send('Error updating phone number');
         } else {
-            console.log('Tag Saved');
+            // console.log('Tag Saved');
             res.status(200).send('Tag saved');
         }
     });
@@ -913,7 +913,7 @@ app.post('/savecallcount', (req, res) => {
             console.error(updateErr);
             res.status(500).send('Error updating call count');
         } else {
-            console.log('Call count Saved');
+            // console.log('Call count Saved');
             res.status(200).send('Call count saved');
         }
     });
@@ -928,7 +928,7 @@ app.post('/savecallcount1', (req, res) => {
             console.error(updateErr);
             res.status(500).send('Error updating call count');
         } else {
-            console.log('Call count Saved');
+            // console.log('Call count Saved');
             const selectQuery = (id && id !== 'null' && id !== '' && id !== 'undefined')
                 ? "SELECT * FROM `contacts` WHERE id = ? AND priority = 0 AND priority_balance >= 0.30;"
                 : "SELECT * FROM `contacts` WHERE phone_no = ? AND priority = 0 AND priority_balance >= 0.30;";
@@ -949,7 +949,7 @@ app.post('/savecallcount1', (req, res) => {
                                 console.error(updateErr);
                                 res.status(500).send('Error updating priority balance');
                             } else {
-                                console.log('Priority balance Updated');
+                                // console.log('Priority balance Updated');
                                 res.status(200).send('Call count and Priority balance updated');
                             }
                         });
@@ -964,7 +964,7 @@ app.post('/savecallcount1', (req, res) => {
 app.post('/addfavourite', (req, res) => {
     const { id, phone_no, count } = req.body;
     var delta = count == "1" ? 1 : -1;
-    var updateQuery = id 
+    var updateQuery = id
         ? "update contacts set favourite_count=GREATEST(0, favourite_count + ?) where id=?;"
         : "update contacts set favourite_count=GREATEST(0, favourite_count + ?) where phone_no=?;";
     var updateValues = [delta, id || phone_no];
@@ -974,7 +974,7 @@ app.post('/addfavourite', (req, res) => {
             console.error(updateErr);
             res.status(500).send('Error updating favourite count');
         } else {
-            console.log('Favourite Added');
+            // console.log('Favourite Added');
             res.status(200).send('Favourite Added');
         }
     });
@@ -1044,7 +1044,7 @@ app.get('/check-call-count1', (req, res) => {
 app.get('/check-premium', (req, res) => {
     var id = req.query.id;
     var phone = req.query.phone;
-    var checkPhoneSql = id 
+    var checkPhoneSql = id
         ? `select premium,premium_start, premium_end, verification, verification_email from contacts where id =?;`
         : `select premium,premium_start, premium_end, verification, verification_email from contacts where phone_no =?;`;
     var value = [id || (phone ? phone.replace(/\s+/g, '') : '')];
@@ -1063,7 +1063,7 @@ app.get('/check-premium', (req, res) => {
 });
 app.post('/savepremium', (req, res) => {
     const { id, phone_no, premium, premium_start, premium_end } = req.body;
-    var updateQuery = id 
+    var updateQuery = id
         ? "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where id=?;"
         : "update `contacts` set premium=?, premium_start=FROM_UNIXTIME(?), premium_end=FROM_UNIXTIME(?) where phone_no=?;";
     var updateValues = [premium, Math.floor(parseInt(premium_start) / 1000), Math.floor(parseInt(premium_end) / 1000), id || phone_no];
@@ -1073,7 +1073,7 @@ app.post('/savepremium', (req, res) => {
             console.error(updateErr);
             res.status(500).send('Error updating call count');
         } else {
-            console.log('Premium Upgrade');
+            // console.log('Premium Upgrade');
             res.status(200).send('Premium Upgrade');
         }
     });
@@ -1104,7 +1104,7 @@ app.post('/updateverify', (req, res) => {
                         console.error(updateErr);
                         res.status(500).send('Error updating phone number');
                     } else {
-                        console.log('Phone number verified');
+                        // console.log('Phone number verified');
                         res.status(200).send('Phone number verified');
                     }
                 });
@@ -1385,7 +1385,7 @@ db1.connect((err) => {
         console.warn('printer_app DB notice:', err.message);
         return;
     }
-    console.log('Connected to MySQL (printer_app)');
+    // console.log('Connected to MySQL (printer_app)');
 });
 app.post('/saveprinter', (req, res) => {
     const { phone, email, name, address, country } = req.body;
@@ -1451,7 +1451,7 @@ app.post('/delete_printer', (req, res) => {
             console.error(updateErr);
             res.status(500).send('Error deleting printer');
         } else {
-            console.log('Phone no deleted');
+            // console.log('Phone no deleted');
             res.status(200).send('printer deleted');
         }
     });
@@ -1874,7 +1874,7 @@ app.post('/delete_account', (req, res) => {
         return res.status(400).json({ error: 'Email or phone required to delete account' });
     }
 
-    console.log(`[DELETE_ACCOUNT] Request to permanently delete account: email=${userEmail}, phone=${cleanPhone}`);
+    // console.log(`[DELETE_ACCOUNT] Request to permanently delete account: email=${userEmail}, phone=${cleanPhone}`);
 
     // 1. Delete from my_contacts table (removes app_profile and all saved contacts)
     const deleteMyContactsQuery = "DELETE FROM my_contacts WHERE owner_email = ?";
@@ -1896,7 +1896,7 @@ app.post('/delete_account', (req, res) => {
                 });
             }
 
-            console.log(`[DELETE_ACCOUNT] Successfully deleted all data for user ${userEmail}`);
+            // console.log(`[DELETE_ACCOUNT] Successfully deleted all data for user ${userEmail}`);
             res.status(200).json({
                 status: 'success',
                 message: 'Account and all associated data permanently deleted.'
@@ -2105,7 +2105,7 @@ app.post(['/api/user_calls', '/user_calls', '/api/users_calls', '/users_calls'],
                     console.error('[POST /api/user_calls] Error saving call:', saveErr);
                     return res.status(500).json({ success: false, message: 'Database save error' });
                 }
-                console.log(`[USER_CALLS] Saved call for '${userId}': ${name} (${phoneNumber})`);
+                // console.log(`[USER_CALLS] Saved call for '${userId}': ${name} (${phoneNumber})`);
                 return res.status(201).json({
                     success: true,
                     message: 'Call added successfully',
@@ -2129,7 +2129,7 @@ app.get(['/api/user_calls', '/user_calls', '/api/users_calls', '/users_calls'], 
                 return res.status(500).json({ success: false, message: 'Database error' });
             }
             const sortedCalls = [...callsList].sort((a, b) => new Date(b.call_time) - new Date(a.call_time));
-            console.log(`[USER_CALLS] Returning ${sortedCalls.length} call(s) for '${userId}'`);
+            // console.log(`[USER_CALLS] Returning ${sortedCalls.length} call(s) for '${userId}'`);
             return res.status(200).json({
                 success: true,
                 data: sortedCalls
