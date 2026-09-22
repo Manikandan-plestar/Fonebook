@@ -35,13 +35,13 @@ if (fs.existsSync(privKeyPath) && fs.existsSync(certPath)) {
     const httpsServer = https.createServer(credentials, app);
     const httpsPort = 3002;
     httpsServer.listen(httpsPort, () => {
-        // console.log(`Server is running on https://apps.plestarinc.com:${httpsPort}`);
+        console.log(`Server is running on https://apps.plestarinc.com:${httpsPort}`);
     });
 } else {
     const httpServer = http.createServer(app);
     const httpPort = 8000;
     httpServer.listen(httpPort, () => {
-        // console.log(`Server is running on http://localhost:${httpPort}`);
+        console.log(`Server is running on http://localhost:${httpPort}`);
     });
 }
 /*async function connectToMongoDB() {
