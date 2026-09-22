@@ -30,7 +30,7 @@ class ApiClient {
       if (entry.value != null) body[entry.key] = entry.value!;
     }
     final resp = await _client.post(_uri(path), body: body).timeout(timeout ?? const Duration(seconds: 25));
-    debugPrint('[API] POST $path -> Status: ${resp.statusCode}, Body: ${resp.body}');
+    // debugPrint('[API] POST $path -> Status: ${resp.statusCode}, Body: ${resp.body}');
     if (resp.statusCode != 200) {
       throw Exception('Server Error ${resp.statusCode}: ${resp.body}');
     }
@@ -48,7 +48,7 @@ class ApiClient {
     req.body = jsonEncode(bodyPayload);
     final streamedResp = await _client.send(req).timeout(const Duration(seconds: 25));
     final resp = await http.Response.fromStream(streamedResp);
-    debugPrint('[API] DELETE $path -> Status: ${resp.statusCode}, Body: ${resp.body}');
+    // debugPrint('[API] DELETE $path -> Status: ${resp.statusCode}, Body: ${resp.body}');
     if (resp.statusCode != 200) {
       throw Exception('Server Error ${resp.statusCode}: ${resp.body}');
     }
@@ -77,7 +77,7 @@ class ApiClient {
       };
       return await post('api/user_calls', payload);
     } catch (e) {
-      debugPrint('[API] addCallToBackend error: $e');
+      // debugPrint('[API] addCallToBackend error: $e');
       return null;
     }
   }
@@ -96,7 +96,7 @@ class ApiClient {
       }
       return [];
     } catch (e) {
-      debugPrint('[API] getCallHistoryFromBackend error: $e');
+      // debugPrint('[API] getCallHistoryFromBackend error: $e');
       return [];
     }
   }
@@ -142,7 +142,7 @@ class ApiClient {
       };
       return await delete('api/user_calls', payload, query);
     } catch (e) {
-      debugPrint('[API] deleteCallsFromBackend error: $e');
+      // debugPrint('[API] deleteCallsFromBackend error: $e');
       return null;
     }
   }

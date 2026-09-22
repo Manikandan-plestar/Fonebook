@@ -178,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               }
             } catch (e) {
-              debugPrint("Reverse geocoding error: $e");
+              // debugPrint("Reverse geocoding error: $e");
             }
           }
 
@@ -204,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _fallbackLocationFromSession();
     } catch (e) {
-      debugPrint("Location initialization error: $e");
+      // debugPrint("Location initialization error: $e");
       _fallbackLocationFromSession();
     } finally {
       if (!(_locationInitCompleter?.isCompleted ?? true)) {

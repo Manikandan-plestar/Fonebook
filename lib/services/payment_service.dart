@@ -29,7 +29,7 @@ class PaymentService {
     }, onDone: () {
       _subscription?.cancel();
     }, onError: (error) {
-      debugPrint("IAP Subscription Error: $error");
+      // debugPrint("IAP Subscription Error: $error");
     });
   }
 
@@ -44,29 +44,29 @@ class PaymentService {
     if (kIsWeb) return false;
     isAvailable = await _iap.isAvailable();
     if (!isAvailable) {
-      debugPrint("In-App Billing not available on this device.");
+      // debugPrint("In-App Billing not available on this device.");
       return false;
     }
 
-    debugPrint("Loading products: $ids");
+    // debugPrint("Loading products: $ids");
     final ProductDetailsResponse resp = await _iap.queryProductDetails(ids.toSet());
     if (resp.error != null) {
-      debugPrint("IAP Query Error: ${resp.error?.message} (${resp.error?.code})");
+      // debugPrint("IAP Query Error: ${resp.error?.message} (${resp.error?.code})");
       return false;
     }
     
     if (resp.notFoundIDs.isNotEmpty) {
-      debugPrint("Warning: Some IDs were not found in App Store / Play Console: ${resp.notFoundIDs}");
+      // debugPrint("Warning: Some IDs were not found in App Store / Play Console: ${resp.notFoundIDs}");
     }
 
     products = resp.productDetails;
-    debugPrint("Found ${products.length} products available.");
+    // debugPrint("Found ${products.length} products available.");
     return true;
   }
 
   Future<void> buyProduct(ProductDetails product, {bool consumable = true}) async {
     if (kIsWeb) return;
-    debugPrint("Initiating purchase for: ${product.id} (consumable=$consumable)");
+    // debugPrint("Initiating purchase for: ${product.id} (consumable=$consumable)");
     final PurchaseParam purchaseParam = PurchaseParam(productDetails: product);
     try {
       if (consumable) {
@@ -75,7 +75,7 @@ class PaymentService {
         await _iap.buyNonConsumable(purchaseParam: purchaseParam);
       }
     } catch (e) {
-      debugPrint("Purchase Initiation Error: $e, trying fallback...");
+      // debugPrint("Purchase Initiation Error: $e, trying fallback...");
       try {
         if (consumable) {
           await _iap.buyNonConsumable(purchaseParam: purchaseParam);
@@ -83,7 +83,7 @@ class PaymentService {
           await _iap.buyConsumable(purchaseParam: purchaseParam);
         }
       } catch (e2) {
-        debugPrint("Purchase Fallback Error: $e2");
+        // debugPrint("Purchase Fallback Error: $e2");
         rethrow;
       }
     }
@@ -94,17 +94,17 @@ class PaymentService {
   Future<void> _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
     if (kIsWeb) return;
     for (var purchase in purchaseDetailsList) {
-      debugPrint("Purchase Update: ID=${purchase.productID}, Status=${purchase.status}");
+      // debugPrint("Purchase Update: ID=${purchase.productID}, Status=${purchase.status}");
       
       if (purchase.status == PurchaseStatus.pending) {
         // Pending state
       } else {
         if (purchase.status == PurchaseStatus.error) {
-          debugPrint("Purchase Error Detail: ${purchase.error?.message} (${purchase.error?.code})");
+          // debugPrint("Purchase Error Detail: ${purchase.error?.message} (${purchase.error?.code})");
         } else if (purchase.status == PurchaseStatus.purchased || purchase.status == PurchaseStatus.restored) {
           final txKey = purchase.purchaseID ?? purchase.verificationData.serverVerificationData;
           if (txKey.isNotEmpty && _verifiedPurchaseIDs.contains(txKey)) {
-            debugPrint("Skipping already processed purchase: $txKey");
+            // debugPrint("Skipping already processed purchase: $txKey");
             continue;
           }
           bool deliver = await _verifyPurchase(purchase);
@@ -125,11 +125,11 @@ class PaymentService {
 
   Future<bool> _verifyPurchase(PurchaseDetails purchase) async {
     try {
-      debugPrint("Verifying purchase token on backend...");
+      // debugPrint("Verifying purchase token on backend...");
       // Placeholder for your backend verification logic
       return true; 
     } catch (e) {
-      debugPrint("Verify Purchase Error: $e");
+      // debugPrint("Verify Purchase Error: $e");
       return false;
     }
   }

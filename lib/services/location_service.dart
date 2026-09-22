@@ -89,7 +89,7 @@ class LocationService {
         return point;
       }
     } catch (e) {
-      debugPrint("Geocoding lookup error for '$rawAddress': $e");
+      // debugPrint("Geocoding lookup error for '$rawAddress': $e");
     }
 
     _geoCache[clean] = null;

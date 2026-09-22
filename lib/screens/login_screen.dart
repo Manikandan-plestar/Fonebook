@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Error sending OTP')));
       }
     } catch (e) {
-      debugPrint("OTP Send Error: $e");
+      // debugPrint("OTP Send Error: $e");
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Network error: $e')));
     } finally {
       setState(() => _isLoading = false);

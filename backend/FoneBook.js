@@ -1382,7 +1382,7 @@ const db1 = mysql.createConnection({
 
 db1.connect((err) => {
     if (err) {
-        console.warn('printer_app DB notice:', err.message);
+        // console.warn('printer_app DB notice:', err.message);
         return;
     }
     // console.log('Connected to MySQL (printer_app)');

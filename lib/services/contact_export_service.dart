@@ -91,7 +91,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         final status = await Permission.contacts.request();
         hasPermission = status.isGranted || await Permission.contacts.isGranted;
       } catch (e) {
-        debugPrint('[EXPORT] Error requesting Permission.contacts: $e');
+        // debugPrint('[EXPORT] Error requesting Permission.contacts: $e');
       }
 
       if (!hasPermission) {
@@ -100,7 +100,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               await FlutterContacts.permissions.request(PermissionType.read) ==
                   PermissionStatus.granted;
         } catch (e) {
-          debugPrint('[EXPORT] Error requesting FlutterContacts permission: $e');
+          // debugPrint('[EXPORT] Error requesting FlutterContacts permission: $e');
         }
       }
 
@@ -150,7 +150,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
             }
           }
         } catch (e) {
-          debugPrint('[EXPORT] Error fetching authoritative contacts: $e');
+          // debugPrint('[EXPORT] Error fetching authoritative contacts: $e');
         }
 
         final phoneSet = widget.selectedPhones ?? <String>{};
@@ -211,7 +211,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         deviceContacts =
             await FlutterContacts.getAll(properties: fastProperties);
       } catch (e) {
-        debugPrint('[EXPORT] Error reading device contacts: $e');
+        // debugPrint('[EXPORT] Error reading device contacts: $e');
       }
 
       final existingDevicePhoneKeys = <String>{};
@@ -327,7 +327,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
           await FlutterContacts.create(newContact);
           exportedCount++;
         } catch (e) {
-          debugPrint('[EXPORT] Error exporting contact $rawName: $e');
+          // debugPrint('[EXPORT] Error exporting contact $rawName: $e');
           lastExportError = e.toString();
           failedCount++;
         }
@@ -401,7 +401,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
 
       widget.onComplete?.call();
     } catch (e) {
-      debugPrint('[EXPORT] General export error: $e');
+      // debugPrint('[EXPORT] General export error: $e');
       if (!mounted) return;
       setState(() {
         _step = ExportStep.error;
