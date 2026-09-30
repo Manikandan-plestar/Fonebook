@@ -16,6 +16,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   @override
   void initState() {
     super.initState();
+    _payment.initialize();
     _initProducts();
   }
 

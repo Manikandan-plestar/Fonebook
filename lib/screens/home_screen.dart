@@ -115,15 +115,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Fone Book collects location data while using the app to show nearby contacts, business listings, and calculate distances to services.',
                 style: TextStyle(fontFamily: 'Poppins', fontSize: 13),
               ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Not Now', style: TextStyle(color: Colors.grey, fontFamily: 'Poppins')),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4C5B8F), foregroundColor: Colors.white),
-                  child: const Text('Allow', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4C5B8F),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Allow', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Not Now', style: TextStyle(color: Colors.grey, fontFamily: 'Poppins')),
+                    ),
+                  ],
                 ),
               ],
             ),

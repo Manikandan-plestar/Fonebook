@@ -44,23 +44,23 @@ class PaymentService {
     if (kIsWeb) return false;
     isAvailable = await _iap.isAvailable();
     if (!isAvailable) {
-      // debugPrint("In-App Billing not available on this device.");
+      debugPrint("IAP: StoreKit / In-App Billing is NOT available on this device.");
       return false;
     }
 
-    // debugPrint("Loading products: $ids");
+    debugPrint("IAP: Querying product IDs: $ids");
     final ProductDetailsResponse resp = await _iap.queryProductDetails(ids.toSet());
     if (resp.error != null) {
-      // debugPrint("IAP Query Error: ${resp.error?.message} (${resp.error?.code})");
+      debugPrint("IAP Query Error: ${resp.error?.message} (${resp.error?.code})");
       return false;
     }
     
     if (resp.notFoundIDs.isNotEmpty) {
-      // debugPrint("Warning: Some IDs were not found in App Store / Play Console: ${resp.notFoundIDs}");
+      debugPrint("IAP Warning: These IDs were NOT FOUND in App Store Connect: ${resp.notFoundIDs}");
     }
 
     products = resp.productDetails;
-    // debugPrint("Found ${products.length} products available.");
+    debugPrint("IAP: Successfully loaded ${products.length} products: ${products.map((p) => '${p.id} (${p.price})').toList()}");
     return true;
   }
 
