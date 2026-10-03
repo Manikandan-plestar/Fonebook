@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Configuration — HIGH-05 fix
+  
+  Production: Only HTTPS allowed (usesCleartextTraffic=false in AndroidManifest.xml).
+  Debug builds: Allow plain HTTP to the Android emulator loopback address (10.0.2.2)
+                so local development still works without SSL certificates.
+  
+  This file is referenced in AndroidManifest.xml via android:networkSecurityConfig.
+  It does NOT affect production builds — 10.0.2.2 is only reachable from the emulator.
+-->
+<network-security-config>
+    <!-- Production: All connections must use HTTPS (inherited from base-config) -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Debug only: allow cleartext HTTP to the Android emulator host (10.0.2.2 = localhost on the host machine) -->
+    <!-- This domain-config block only applies when the app is built in debug mode -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

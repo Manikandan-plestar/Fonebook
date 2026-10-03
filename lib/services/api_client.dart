@@ -2,9 +2,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-const _apiBase = 'http://10.0.2.2:8000/';
-    // 'https://apps.plestarinc.com:3002/';
-     
+// HIGH-05 / MED-01: Use HTTPS production URL in release builds.
+// Only use the emulator HTTP address in debug mode.
+// NEVER use plain HTTP in production.
+const _apiBase = kDebugMode
+    ? 'http://10.0.2.2:8000/'
+    : 'https://apps.plestarinc.com:3002/';
+
+// App version — must match pubspec.yaml version string.
+// Used in X-App-Version header so the server can track old-client usage.
+const _appVersion = '1.0.14';
 
 class ApiClient {
   final http.Client _client = http.Client();
@@ -18,8 +25,14 @@ class ApiClient {
     return Uri.parse('$_apiBase$cleanPath').replace(queryParameters: params.isEmpty ? null : params);
   }
 
+  // Base headers sent with every request.
+  // X-App-Version lets the server AUTH-MONITOR log which client version is calling.
+  Map<String, String> get _baseHeaders => {
+    'X-App-Version': _appVersion,
+  };
+
   Future<dynamic> get(String path, [Map<String, String?> query = const {}]) async {
-    final resp = await _client.get(_uri(path, query)).timeout(const Duration(seconds: 25));
+    final resp = await _client.get(_uri(path, query), headers: _baseHeaders).timeout(const Duration(seconds: 25));
     if (resp.statusCode != 200) throw Exception('Server Error: ${resp.statusCode}');
     return jsonDecode(resp.body);
   }
@@ -29,7 +42,9 @@ class ApiClient {
     for (final entry in fields.entries) {
       if (entry.value != null) body[entry.key] = entry.value!;
     }
-    final resp = await _client.post(_uri(path), body: body).timeout(timeout ?? const Duration(seconds: 25));
+    final resp = await _client
+        .post(_uri(path), body: body, headers: _baseHeaders)
+        .timeout(timeout ?? const Duration(seconds: 25));
     // debugPrint('[API] POST $path -> Status: ${resp.statusCode}, Body: ${resp.body}');
     if (resp.statusCode != 200) {
       throw Exception('Server Error ${resp.statusCode}: ${resp.body}');

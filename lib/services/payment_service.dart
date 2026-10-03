@@ -123,14 +123,50 @@ class PaymentService {
     }
   }
 
-  Future<bool> _verifyPurchase(PurchaseDetails purchase) async {
+  // CRIT-04: Server-side purchase verification via /v1/payments/verify.
+  // The server validates the Google Play receipt against the Play Developer API,
+  // checks for replay attacks, and only grants the benefit after confirmation.
+  // This method returns false on any error to prevent fraudulent grants.
+  //
+  // [profileId] is optional — pass it when the purchase is for a specific profile.
+  Future<bool> verifyPurchaseOnServer(
+    PurchaseDetails purchase, {
+    String? profileId,
+    String? userEmail,
+  }) async {
     try {
-      // debugPrint("Verifying purchase token on backend...");
-      // Placeholder for your backend verification logic
-      return true; 
+      final receipt = purchase.verificationData.serverVerificationData;
+      if (receipt.isEmpty) {
+        debugPrint('[PAYMENT] Empty receipt — rejecting purchase');
+        return false;
+      }
+
+      final payload = <String, String?>{
+        'product_id': purchase.productID,
+        'purchase_token': receipt,
+        'platform': 'google_play',
+        if (profileId != null) 'profile_id': profileId,
+      };
+
+      final res = await _api.post('v1/payments/verify', payload, timeout: const Duration(seconds: 30));
+
+      if (res is Map && res['status'] == 'success') {
+        debugPrint('[PAYMENT] Server verified purchase: ${purchase.productID}');
+        return true;
+      }
+
+      debugPrint('[PAYMENT] Server rejected purchase: ${res is Map ? res['message'] : res}');
+      return false;
     } catch (e) {
-      // debugPrint("Verify Purchase Error: $e");
+      // Network error or server unavailable — do NOT grant benefit
+      // The purchase can be retried; in_app_purchase will deliver it again on next app launch.
+      debugPrint('[PAYMENT] Verification error — not granting benefit. Error: $e');
       return false;
     }
+  }
+
+  /// Legacy internal verify — now calls the server. Kept for internal listener compat.
+  Future<bool> _verifyPurchase(PurchaseDetails purchase) async {
+    return verifyPurchaseOnServer(purchase);
   }
 }

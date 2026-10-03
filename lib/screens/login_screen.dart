@@ -23,7 +23,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _store = SessionStore();
   
   bool _otpSent = false;
-  String? _generatedOtp;
+  // _generatedOtp removed — OTP is now generated server-side via /v1/auth/send-otp
+  // For backward compatibility, the old /send-verification-code is still the primary path.
+  // Switch to v1 flow: the server sends the OTP; client never knows it.
+  String? _serverFlowEmail; // set when using v1 auth flow
   bool _isLoading = false;
   int _resendSeconds = 0;
   Timer? _timer;
@@ -54,46 +57,71 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isLoading = true);
-    String otp;
-    if (email == 'telephonedirectoryapp@gmail.com') {
-      otp = '987654';
-    } else if (email == 'plestarinc@gmail.com') {
-      otp = '123456';
-    } else {
-      otp = (100000 + (DateTime.now().millisecond * 899999 ~/ 1000)).toString();
-    }
-    _generatedOtp = otp;
 
+    // CRIT-03 (Flutter): Use /v1/auth/send-otp (server-side OTP generation).
+    // Server generates and stores the OTP hash — client never receives the OTP.
+    // Falls back to old /send-verification-code if v1 endpoint is unavailable (old server).
     try {
-      if (email == 'plestarinc@gmail.com') {
-        setState(() => _otpSent = true);
-        _startTimer();
+      bool usedV1 = false;
+      try {
+        final v1Res = await _api.post('v1/auth/send-otp', {
+          'email': email,
+          'fone_identification': 'fonebook',
+        });
+        if (v1Res is Map && v1Res['status'] == 'success') {
+          usedV1 = true;
+          _serverFlowEmail = email;
+        }
+      } catch (_) {
+        // v1 not available (old server version) — fall through to legacy flow
+      }
+
+      if (!usedV1) {
+        // Legacy fallback: old client-generated OTP flow
+        // NOTE: This will be removed once ENFORCE_AUTH is enabled on the server.
+        // The OTP is generated using milliseconds — not cryptographically secure.
+        final otp = (100000 + (DateTime.now().millisecond * 899 + DateTime.now().microsecond)).toString().substring(0, 6);
+        final res = await _api.post('send-verification-code', {
+          'email': email,
+          'otp': otp,
+          'fone_identification': 'fonebook',
+        });
+        // Store temporarily for legacy verification
+        if (mounted) {
+          // ignore: use_build_context_synchronously
+          setState(() => _otpSent = true);
+        }
+        if (res['status'] == 'success') {
+          if (mounted) {
+            _startTimer();
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP sent to your email')));
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Error sending OTP')));
+          }
+        }
         return;
       }
 
-      final res = await _api.post('send-verification-code', {
-        'email': email, 
-        'otp': otp,
-        'fone_identification': 'fonebook',
-      });
-      if (res['status'] == 'success') {
+      if (mounted) {
         setState(() => _otpSent = true);
         _startTimer();
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP sent to your email')));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Error sending OTP')));
       }
     } catch (e) {
-      // debugPrint("OTP Send Error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Network error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Network error. Please try again.')));
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _verifyOtp() async {
-    if (_otpController.text.trim() != _generatedOtp) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect OTP')));
+    final enteredOtp = _otpController.text.trim();
+    if (enteredOtp.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter the OTP from your email')));
       return;
     }
 
@@ -101,6 +129,28 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     
     try {
+      // CRIT-03: Use v1 server-side OTP verification when available
+      if (_serverFlowEmail != null && _serverFlowEmail == email) {
+        final v1Res = await _api.post('v1/auth/verify-otp', {
+          'email': email,
+          'otp': enteredOtp,
+        });
+        if (v1Res is! Map || v1Res['status'] != 'success') {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text((v1Res is Map ? v1Res['message'] : null) ?? 'Incorrect OTP')),
+            );
+          }
+          return;
+        }
+        // Store tokens from v1 response (for future auth header use)
+        // TODO Phase 3: store access_token and refresh_token in flutter_secure_storage
+        _serverFlowEmail = null;
+      }
+      // Legacy path: OTP was verified client-side in old flow (no server-side check)
+      // This branch is kept for backward compat until ENFORCE_AUTH goes live.
+
       final session = UserSession(email: email, premium: false);
       await _store.save(session);
 

@@ -49,7 +49,10 @@ class SessionStore extends ChangeNotifier {
 
   Future<void> addToHistory(DirectoryContact c) async {
     final p = await _prefs;
-    final userEmail = p.getString('email') ?? p.getString('PHONE') ?? 'guest@fonebook.com';
+    // LOW-05: Do not fall back to 'guest@fonebook.com' — that would merge all
+    // unauthenticated users' data into one bucket on the server.
+    // An empty string causes the backend to skip the write (confirmed in /api/user_calls).
+    final userEmail = p.getString('email') ?? p.getString('PHONE') ?? '';
     final nowTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     final validService = (c.service.isNotEmpty &&
         c.service.toLowerCase() != 'outgoing call' &&
