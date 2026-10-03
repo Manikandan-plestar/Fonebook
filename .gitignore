@@ -44,3 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /android/build/
+# Environment variables
+.env
+backend/.env
+
+# Backend node_modules
+backend/node_modules/
+

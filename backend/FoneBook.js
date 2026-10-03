@@ -1,5 +1,9 @@
+// ─── Load environment variables FIRST ────────────────────────────────────────
+require('dotenv').config();
+const { checkEnv } = require('./middleware/env_check');
+checkEnv();
+
 const express = require('express');
-const mysql = require('mysql');
 const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
@@ -9,19 +13,41 @@ const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
+// ─── Security middleware ───────────────────────────────────────────────────────
+const { corsMiddleware } = require('./middleware/cors');        // CRIT-05
+const { globalLimiter, otpLimiterByIp } = require('./middleware/rate_limit'); // HIGH-04
+const { requireAuth, makeOwnershipChecker } = require('./middleware/auth');   // CRIT-01 (monitor)
+const { escapeHtml, buildSafePhraseRegex, validateSearchQuery, fieldLengthValidator } = require('./lib/sanitize'); // HIGH-03, MED-03, MED-07
+
+// ─── DB pool (mysql2 drop-in, backward compatible) ────────────────────────────
+const { db, db1 } = require('./lib/db'); // MED-10, CRIT-06
+
 const app = express();
+
+// Trust Google Cloud load balancer so rate limiter sees real client IPs
+app.set('trust proxy', 1);
 
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
+
+// CRIT-05: Replace wildcard CORS with allowlist (native mobile apps unaffected)
+app.use(corsMiddleware);
+
+// HIGH-04: Global rate limiting (120 req/min by default — generous, normal use never hit)
+app.use(globalLimiter);
+
+// MED-03: Input field length validation on all POST/PUT routes
+app.use(fieldLengthValidator);
+
+// Store db and email transporter on app for route access
+app.set('db', db);
+
+// ─── V1 routes (new, additive — old routes untouched below) ───────────────────
+const v1AuthRoutes = require('./routes/v1/auth');
+const v1PaymentRoutes = require('./routes/v1/payments');
+app.use('/v1/auth', v1AuthRoutes);
+app.use('/v1/payments', v1PaymentRoutes);
+app.use('/v1', v1PaymentRoutes); // also mounts /v1/app-config and /v1/me/premium
 
 // Check if SSL certs exist (Production HTTPS vs Local HTTP)
 const privKeyPath = '/etc/letsencrypt/live/apps.plestarinc.com/privkey.pem';
@@ -180,21 +206,14 @@ app.get('/check-contacts', async (req, res) => {
 }
 
 connectToMongoDB();*/
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'fonebook',
-});
+// DB is now managed by lib/db.js (connection pool, mysql2, env vars)
+// The const db above is imported from lib/db.js — no change needed in route code below.
 
-db.connect((err) => {
-    if (err) {
-        console.error('Error connecting to MySQL:', err.message);
-        return;
-    }
-    // console.log('Connected to MySQL');
-
-    const migrateLegacyReviews = () => {
+// ─── Startup migrations (run with existence check to avoid repeated ALTER) ─────
+// IMPORTANT: These run at startup only if the column doesn't exist yet.
+// Once production is confirmed to have these columns, move them to migrations/*.sql
+// and remove from here. Ask the owner to confirm current production schema first.
+const migrateLegacyReviews = () => {
         const legacyMigrationSql = `
             UPDATE reviews r
             JOIN (
@@ -212,10 +231,10 @@ db.connect((err) => {
                 // console.log(`Migrated ${migResult.changedRows} legacy reviews to single-profile Business Profile IDs`);
             }
         });
-    };
+};
 
-    // Auto-migration checks for reviews and contacts tables
-    db.query("SHOW COLUMNS FROM reviews LIKE 'contact_id'", (colErr, colResult) => {
+// Auto-migration checks for reviews and contacts tables
+db.query("SHOW COLUMNS FROM reviews LIKE 'contact_id'", (colErr, colResult) => {
         if (!colErr && colResult && colResult.length === 0) {
             db.query("ALTER TABLE reviews ADD COLUMN contact_id INT DEFAULT NULL AFTER id", (alterErr) => {
                 if (alterErr) console.error("Error adding contact_id column to reviews table:", alterErr);
@@ -227,9 +246,9 @@ db.connect((err) => {
         } else {
             migrateLegacyReviews();
         }
-    });
+});
 
-    const subColumns = [
+const subColumns = [
         { name: 'subscription_status', type: "VARCHAR(20) DEFAULT 'active'" },
         { name: 'subscription_start', type: "DATETIME DEFAULT NULL" },
         { name: 'subscription_end', type: "DATETIME DEFAULT NULL" },
@@ -535,13 +554,15 @@ app.get('/check-contact', async (req, res) => {
 
     if (type === "search") {
         if (!trimmedQuery) return res.status(200).json([]);
+        // HIGH-03: Cap query length and escape regex metacharacters to prevent ReDoS
+        if (trimmedQuery.length > 100) return res.status(400).json({ error: 'Query too long (max 100 chars).' });
 
         const searchPattern = `%${trimmedQuery}%`;
 
-        // For Phrase Search: We create a regex that checks if the field contains all words
-        // If query is "Best Plumber", regex becomes "Best.*Plumber|Plumber.*Best"
+        // For Phrase Search: We create a safe regex that checks if the field contains all words
+        // buildSafePhraseRegex escapes all regex metacharacters before joining with .*
         const words = trimmedQuery.split(/\s+/);
-        const phraseRegex = words.join('.*');
+        const phraseRegex = buildSafePhraseRegex(trimmedQuery); // HIGH-03: was words.join('.*') — unsafe
 
         var checkPhoneSql = `
             /* 1. Top 3 Random Ads */
@@ -620,7 +641,8 @@ app.get('/check-contact', async (req, res) => {
             var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC limit ?) AS subquery);`;
             var value = [limitVal];
         } else {
-            var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC) AS subquery);`;
+            // A3: Hard cap on fallback — no LIMIT was set, which could return the entire table
+            var checkPhoneSql = `(SELECT * FROM contacts WHERE priority=0 and priority_balance>=0.30 AND publish="yes" and deleted_contact=0 and promote_international="yes" ORDER BY Rand() limit 3) UNION (SELECT * FROM (SELECT * FROM contacts WHERE publish="yes" and deleted_contact=0 GROUP BY id ORDER BY id DESC LIMIT 200) AS subquery);`;
             var value = [];
         }
     } else {
@@ -629,9 +651,8 @@ app.get('/check-contact', async (req, res) => {
     }
     db.query(checkPhoneSql, value, (checkPhoneErr, checkPhoneResult) => {
         if (checkPhoneErr) {
-            console.error('Error checking phone number:', checkPhoneErr);
-            console.error('SQL Query:', checkPhoneSql);
-            console.error('SQL Values:', value);
+            // MED-04: Log internally but don't expose SQL/errors to client
+            console.error('[SEARCH] Query error:', checkPhoneErr.message);
             res.status(200).send('Error checking phone number');
             return;
         }
@@ -1456,8 +1477,11 @@ app.post('/delete_printer', (req, res) => {
         }
     });
 });
-const gmailEmail = 'otp@tpdirectory.com';
-const gmailPassword = 'bueh rpwu zvxd goky';
+// CRIT-02: Gmail credentials from environment variables (never hardcoded)
+// ⚠️  The old password is still in git history. Rotate it on Google account immediately.
+// See: https://myaccount.google.com/apppasswords
+const gmailEmail = process.env.GMAIL_USER;
+const gmailPassword = process.env.GMAIL_PASS;
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -1467,8 +1491,19 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-app.post('/send-verification-code', (req, res) => {
+// Make transporter available to v1/auth routes
+app.set('emailTransporter', transporter);
+
+// HIGH-04: OTP endpoint protected by strict rate limiter (3 req/10min per IP)
+// CRIT-03 NOTE: OTP is still client-generated here for backward compatibility with old app versions.
+// New app versions should use POST /v1/auth/send-otp (server-side OTP, no client OTP input).
+// MED-07: HTML-escape all interpolated values to prevent email HTML injection
+app.post('/send-verification-code', otpLimiterByIp, (req, res) => {
     const { email, otp } = req.body;
+
+    if (!email || !email.includes('@')) {
+        return res.status(400).json({ status: 'error', message: 'Valid email required.' });
+    }
 
     // Safely get identification, default to empty string if missing
     const fone_id = (req.body.fone_identification || '').toString().toLowerCase();
@@ -1483,20 +1518,27 @@ app.post('/send-verification-code', (req, res) => {
         bannerUrl = "https://apps.plestarinc.com/uploads/fonebook_banner.jpg";
     }
 
+    // MED-07: HTML-escape all user-controlled values before inserting into HTML email
+    const safeOtp = escapeHtml(String(otp || ''));
+    const safeAppName = escapeHtml(appName);
+    const safeBannerUrl = escapeHtml(bannerUrl);
+    const safeEmail = escapeHtml(String(email || ''));
+
     const mailOptions = {
-        from: `"${appName}" <${gmailEmail}>`,
-        to: email,
-        subject: `Verification Code - ${appName}`,
+        from: `"${safeAppName}" <${gmailEmail}>`,
+        to: safeEmail,
+        subject: `Verification Code - ${safeAppName}`,
         html: `<div>
-                <p>Your Verification Code is <b>${otp}</b>. ${appName}.</p>
+                <p>Your Verification Code is <b>${safeOtp}</b>. ${safeAppName}.</p>
                 <br>
-                <img src="${bannerUrl}" alt="Banner" style="width:400px;height:auto;"/>
+                <img src="${safeBannerUrl}" alt="Banner" style="width:400px;height:auto;"/>
             </div>`
     };
 
     transporter.sendMail(mailOptions, (error, info) => {
         if (error) {
-            console.error('Error sending email:', error);
+            // MED-04: Never log PII or raw error details in response
+            console.error('[EMAIL] Error sending verification email (details redacted)');
             res.status(200).json({ status: 'error', message: 'Error sending verification code' });
         } else {
             res.status(200).json({ status: 'success', message: 'Verification email sent' });
